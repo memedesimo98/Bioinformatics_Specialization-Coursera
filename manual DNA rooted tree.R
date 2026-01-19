@@ -1,0 +1,204 @@
+
+### manual DNA rooted tree
+
+### rooted trees
+
+# ---------- Parsing ----------
+
+parse_input <- function(lines) {
+  n <- as.integer(lines[1])
+  edges <- list()
+  leaves <- list()
+  for (i in 2:length(lines)) {
+    parts <- strsplit(lines[i], "->")[[1]]
+    parent <- parts[1]
+    child  <- parts[2]
+    edges[[length(edges) + 1]] <- c(parent, child)
+    if (grepl("^[ACGT]+$", child)) {
+      # Leaf node is the DNA string itself
+      leaves[[child]] <- child
+    }
+  }
+  list(n = n, edges = edges, leaves = leaves)
+}
+
+children_map <- function(edges) {
+  ch <- list()
+  for (e in edges) {
+    p <- e[1]; c <- e[2]
+    ch[[p]] <- c(ch[[p]], c)
+  }
+  ch
+}
+
+all_nodes <- function(edges) {
+  unique(unlist(edges))
+}
+
+# ---------- Fitch per column ----------
+
+# Returns: sets per node, and column score
+fitch_bottom_up <- function(edges, leaf_char, alphabet = c("A","C","G","T")) {
+  nodes <- all_nodes(edges)
+  chmap <- children_map(edges)
+  
+  # Initialize sets
+  sets <- setNames(vector("list", length(nodes)), nodes)
+  score <- 0
+  
+  # Leaves: fixed singleton set
+  for (v in nodes) {
+    if (!is.null(leaf_char[[v]])) {
+      sets[[v]] <- leaf_char[[v]]
+    }
+  }
+  
+  # Process internal nodes in a loop until all have sets
+  repeat {
+    progressed <- FALSE
+    for (v in names(chmap)) {
+      if (!length(sets[[v]])) {
+        kids <- chmap[[v]]
+        # Only compute when both children are set
+        if (all(vapply(kids, function(u) length(sets[[u]]) > 0, logical(1)))) {
+          inter <- intersect(sets[[kids[1]]], sets[[kids[2]]])
+          if (length(inter) > 0) {
+            sets[[v]] <- inter
+          } else {
+            sets[[v]] <- sort(union(sets[[kids[1]]], sets[[kids[2]]]),
+                              method = "shell")
+            score <- score + 1
+          }
+          progressed <- TRUE
+        }
+      }
+    }
+    if (!progressed) break
+  }
+  
+  list(sets = sets, score = score)
+}
+
+# Top-down assignment following Fitch sets with lexicographic tie-breaking
+fitch_top_down_assign <- function(edges, sets, root, alphabet = c("A","C","G","T")) {
+  chmap <- children_map(edges)
+  assign <- list()
+  
+  # Root choice
+  root_state <- sort(sets[[root]])[1]
+  assign[[root]] <- root_state
+  
+  stack <- list(root)
+  while (length(stack) > 0) {
+    v <- stack[[1]]; stack <- stack[-1]
+    kids <- chmap[[v]]
+    if (is.null(kids)) next
+    for (u in kids) {
+      if (is.null(assign[[u]])) {
+        if (assign[[v]] %in% sets[[u]]) {
+          assign[[u]] <- assign[[v]]
+        } else {
+          assign[[u]] <- sort(sets[[u]])[1]
+        }
+        stack <- c(stack, u)
+      }
+    }
+  }
+  assign
+}
+
+small_parsimony <- function(lines) {
+  parsed <- parse_input(lines)
+  edges  <- parsed$edges
+  leaves <- parsed$leaves
+  alphabet <- c("A","C","G","T")
+  chmap <- children_map(edges)
+  
+  # Determine root: parent that never appears as an internal child
+  parents <- unique(vapply(edges, function(e) e[1], "", USE.NAMES = FALSE))
+  children <- unique(vapply(edges, function(e) e[2], "", USE.NAMES = FALSE))
+  internal_children <- setdiff(children, names(leaves))
+  roots <- setdiff(parents, internal_children)
+  if (length(roots) == 0) roots <- setdiff(parents, children)
+  root <- roots[1]
+  
+  # String length
+  any_leaf <- leaves[[1]]
+  m <- nchar(any_leaf)
+  
+  # Storage for reconstructed labels
+  internal_nodes <- setNames(rep("", length(parents)), parents)
+  
+  total_score <- 0
+  
+  for (pos in 1:m) {
+    # Column characters for leaves
+    col_chars <- lapply(leaves, function(s) substr(s, pos, pos))
+    
+    # Fitch bottom-up (sets and column score)
+    fb <- fitch_bottom_up(edges, col_chars, alphabet)
+    sets <- fb$sets
+    total_score <- total_score + fb$score
+    
+    # Fitch top-down assignment
+    assign <- fitch_top_down_assign(edges, sets, root, alphabet)
+    
+    # Append assigned symbol to internal node labels only
+    for (v in parents) {
+      internal_nodes[[v]] <- paste0(internal_nodes[[v]], assign[[v]])
+    }
+  }
+  
+  # Build adjacency list (both directions)
+  adjacency <- list()
+  for (e in edges) {
+    u <- e[1]; v <- e[2]
+    label_u <- if (!is.null(leaves[[u]])) leaves[[u]] else internal_nodes[[u]]
+    label_v <- if (!is.null(leaves[[v]])) leaves[[v]] else internal_nodes[[v]]
+    dist <- sum(strsplit(label_u, "")[[1]] != strsplit(label_v, "")[[1]])
+    adjacency[[length(adjacency) + 1]] <- paste0(label_u, "->", label_v, ":", dist)
+    adjacency[[length(adjacency) + 1]] <- paste0(label_v, "->", label_u, ":", dist)
+  }
+  
+  list(score = total_score, adjacency = adjacency, internal = internal_nodes, leaves = leaves)
+}
+
+### test
+
+D <- "8
+AAATGCGAGTAAATATCAATTCTTGGATGGGGGAAAAAAA->8
+8->AAATGCGAGTAAATATCAATTCTTGGATGGGGGAAAAAAA
+8->CCGCAGAGAATTTTCGGTACGTCGTATGCATCTAAGGGAC
+8->13
+CCGCAGAGAATTTTCGGTACGTCGTATGCATCTAAGGGAC->8
+ATCCAGTCGGAGCAGCCCAGGGTCACCACAATTGTCCATT->9
+9->ATCCAGTCGGAGCAGCCCAGGGTCACCACAATTGTCCATT
+9->AGTTCGCGCGGAAAGTTTTATGTAAGTGCCAATACTATAA
+9->12
+AGTTCGCGCGGAAAGTTTTATGTAAGTGCCAATACTATAA->9
+CAGCCAGTATTCACGTCGGCTGTTAAGCGTGAACGCATAA->10
+10->CAGCCAGTATTCACGTCGGCTGTTAAGCGTGAACGCATAA
+10->CTCGCGGAGTTAGACACTCTAGTGATATGATGACCCCAGT
+10->12
+CTCGCGGAGTTAGACACTCTAGTGATATGATGACCCCAGT->10
+CGATCACGCTAAATAATCGGCGTTGGAGCCGCAATGGCTA->11
+11->CGATCACGCTAAATAATCGGCGTTGGAGCCGCAATGGCTA
+11->CGCTACTTGGCGGCCCGCCACGGGTATCTACGGCCCCCAG
+11->13
+CGCTACTTGGCGGCCCGCCACGGGTATCTACGGCCCCCAG->11
+12->10
+12->9
+12->13
+13->8
+13->11
+13->12"
+D <- unlist(strsplit(D," |\t|\n"))
+lines <- D
+
+res <- small_parsimony(lines)
+
+cat(res$score, "\n",
+    paste(res$adjacency, collapse = "\n"), "\n",
+    file = "result.txt")
+
+### works

@@ -1,0 +1,143 @@
+# spectral_alignment
+
+spectral_alignment <- function(peptide, spectrum, k, AA_map, max_shift = 200) {
+  pep <- unlist(strsplit(peptide, ""))
+  aa_mass <- as.integer(sapply(pep, function(a) AA_map[[a]]$Mass))
+  cum_mass <- cumsum(aa_mass)
+  m <- tail(cum_mass, 1)
+  L <- length(spectrum)
+  
+  if (any(cum_mass != as.integer(cum_mass))) {
+    stop("Peptide cumulative masses are non-integer. Bin masses to match spectrum indices.")
+  }
+  
+  # DP arrays on (i in 0..m) x (j in 0..L) x (t in 0..k)
+  Score <- array(-Inf, dim = c(m + 1, L + 1, k + 1))
+  Prev  <- array(NA_character_, dim = c(m + 1, L + 1, k + 1))  # "prev_i prev_j prev_t mod"
+  Score[1, 1, 1] <- 0  # source (0,0,0)
+  
+  # Mass lookup keyed by cumulative mass
+  diff_at_row <- aa_mass
+  names(diff_at_row) <- as.character(cum_mass)
+  
+  # Fill DP
+  for (i in cum_mass) {
+    d <- diff_at_row[[as.character(i)]]
+    for (j in 1:L) {
+      sj <- spectrum[j]
+      for (t in 0:k) {
+        layer <- t + 1
+        
+        # Diagonal predecessor
+        prev_i <- i - d
+        prev_j <- j - d
+        if (prev_i >= 0 && prev_j >= 0) {
+          cand <- Score[prev_i + 1, prev_j + 1, layer] + sj
+          if (cand > Score[i + 1, j + 1, layer]) {
+            Score[i + 1, j + 1, layer] <- cand
+            Prev[i + 1, j + 1, layer]  <- paste(prev_i, prev_j, t, 0)
+          }
+        }
+        
+        # Non-diagonal predecessors
+        if (t > 0 && prev_i >= 0) {
+          min_jprime <- max(0, j - d - max_shift)
+          max_jprime <- min(j - 1, j - d + max_shift)
+          if (min_jprime <= max_jprime) {
+            for (jprime in min_jprime:max_jprime) {
+              if (jprime == prev_j) next
+              cand <- Score[prev_i + 1, jprime + 1, layer - 1] + sj
+              if (cand > Score[i + 1, j + 1, layer]) {
+                mod <- (j - jprime) - d
+                Score[i + 1, j + 1, layer] <- cand
+                Prev[i + 1, j + 1, layer]  <- paste(prev_i, jprime, t - 1, mod)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  # Sink
+  sink_scores <- Score[m + 1, L + 1, ]
+  best_layer <- which.max(sink_scores)
+  best_score <- sink_scores[best_layer]
+  
+  # Backtrack mods only
+  mods <- integer(length(pep))
+  i <- m; j <- L; t <- best_layer - 1
+  while (!is.na(Prev[i + 1, j + 1, t + 1])) {
+    prev <- strsplit(Prev[i + 1, j + 1, t + 1], " ")[[1]]
+    prev_i <- as.integer(prev[1])
+    prev_j <- as.integer(prev[2])
+    prev_t <- as.integer(prev[3])
+    mod    <- as.integer(prev[4])
+    
+    pos <- match(i, cum_mass)
+    if (!is.na(pos)) {
+      mods[pos] <- mod
+    }
+    
+    i <- prev_i; j <- prev_j; t <- prev_t
+  }
+  
+  # Build modified peptide string
+  mod_peptide <- character(length(pep))
+  for (idx in seq_along(pep)) {
+    aa <- pep[idx]
+    amt <- mods[idx]
+    if (amt == 0) {
+      mod_peptide[idx] <- aa
+    } else {
+      sign <- if (amt >= 0) "+" else ""
+      mod_peptide[idx] <- paste0(aa, "(", sign, amt, ")")
+    }
+  }
+  
+  list(
+    best_score = best_score,
+    modified_peptide = paste(mod_peptide, collapse = ""),
+    mods = mods
+  )
+}
+
+peptide <- "MDACIQV"
+spectrum <- "-6 12 7 7 8 -10 11 13 -8 0 -4 6 2 0 -1 -4 14 -1 12 -10 9 5 1 11 4 -1 -6 -5 2 10 11 -2 -2 15 10 -10 7 -1 0 7 1 0 -4 -10 -3 0 15 -6 -9 -2 1 14 6 10 -5 14 6 -4 -8 3 -5 -8 9 9 -5 -4 -7 -5 -6 2 12 7 4 3 -2 0 12 1 10 -2 12 10 10 -3 9 12 7 -2 -7 11 13 11 10 14 6 8 11 -2 0 6 -8 10 5 5 10 -6 0 -10 -8 0 12 -9 -10 0 9 -2 13 0 5 3 -6 5 1 7 -4 -2 -7 15 4 -8 -5 7 3 11 12 -8 15 14 13 13 -1 13 11 15 8 -10 0 14 7 4 15 9 12 13 7 -2 13 12 9 8 9 12 -4 7 8 9 11 7 1 -4 -5 6 -5 -2 -3 -8 10 -8 13 -3 12 9 -7 5 13 -8 -9 15 -4 -6 5 11 4 1 11 -5 0 0 2 0 -3 -1 -8 8 13 9 10 -9 -6 -10 14 -9 7 -10 -3 -4 -1 8 4 -4 11 7 3 1 -8 -9 7 -7 0 7 3 -6 3 -10 -5 5 8 -2 -9 -1 1 -6 3 7 -9 9 -5 -7 15 14 -9 1 -3 6 -6 1 12 0 -3 -2 -7 -6 7 1 10 -6 -10 11 2 -3 1 -8 -7 7 8 -7 -9 6 6 10 9 3 -3 -4 5 7 7 -10 9 -9 12 4 -8 9 15 -5 4 14 11 12 6 12 0 13 -5 -9 -4 5 -10 -10 5 15 -1 10 0 -6 -1 -8 9 9 8 -1 10 15 7 -9 -10 -7 -5 -5 -7 6 -6 -4 -6 3 -8 -6 8 7 -7 9 -2 -1 8 -7 10 2 5 10 8 4 3 -7 3 3 11 9 2 2 -7 7 7 1 13 7 -9 0 -3 10 10 8 -10 10 -2 -7 -1 7 8 2 10 -1 -7 12 -3 3 14 -8 2 0 8 -4 11 11 -6 -4 10 -1 7 5 14 6 15 0 -10 5 -2 -9 14 -7 -2 0 15 12 -6 5 -7 -10 10 8 14 -2 14 -3 12 -5 8 0 13 7 -3 0 -2 -7 -3 0 -5 11 7 -2 8 -10 -8 -5 -5 8 3 9 -8 -4 -5 -10 4 4 10 2 14 4 -3 7 15 12 13 -4 13 10 -9 -7 -6 15 -6 10 14 1 -10 11 10 -7 2 11 12 15 -6 7 15 7 -1 -9 1 -10 1 -9 12 5 -9 -9 10 -2 9 2 -6 3 14 -9 10 6 13 -3 7 -4 -9 9 7 14 -3 12 10 5 2 -9 0 -5 -2 14 4 1 2 6 -4 12 -1 -8 7 -1 0 8 12 1 3 4 12 2 5 -3 9 -8 10 1 4 10 13 -2 12 13 8 3 10 4 11 -5 0 9 3 2 9 -7 9 15 -3 12 15 -9 -7 -2 4 4 -9 -10 5 -9 -8 7 14 7 15 9 1 -1 -9 0 2 11 -7 -8 2 8 11 -1 -8 -5 -9 7 3 15 4 4 12 -6 -10 5 -2 -6 0 4 -3 13 6 5 -1 1 -8 -2 -7 9 2 9 4 3 -8 10 -4 15 -7 -5 0 0 -6 15 -1 -9 -4 15 -7 12 8 5 6 4 -10 9 12 10 -7 -4 -4 3 13 -3 5 -9 -10 -7 -3 3 0 11 -8 9 -6 9 5 4 11 12 13 2 2 1 1 11 0 0 15 8 14 4 -3 -4 -3 -6 8 -5 0 -2 -8 0 -7 -6 13 9 -6 -2 -8 -10 4 7 7 -6 9 4 -4 -3 15 -9 10 -9 -4 0 6 2 1 5 3 -9 5 -8 -3 15 0 10 9 -7 15 -5 7 -8 0 6 10 -8 6 -1 -4 1 7 1 8 3 10 5 -1 -3 5 15 9 0 12 8 13 -9"
+spectrum <- as.integer(strsplit(spectrum, " ")[[1]])
+k <- 2
+spectral_alignment(peptide, spectrum, k, AA_map)
+
+###debugging:
+
+score_peptide <- function(peptide, mods, spectrum, AA_map) {
+  # peptide: string like "LVWSTE"
+  # mods: numeric vector of same length, modification offsets per residue
+  # spectrum: integer vector of intensities
+  # AA_map: list of amino acid masses (integers)
+  
+  pep <- unlist(strsplit(peptide, ""))
+  aa_mass <- sapply(pep, function(a) AA_map[[a]]$Mass)
+  
+  cum_mass <- 0
+  total_score <- 0
+  
+  for (i in seq_along(pep)) {
+    step <- aa_mass[i] + mods[i]
+    cum_mass <- cum_mass + step
+    if (cum_mass >= 1 && cum_mass <= length(spectrum)) {
+      total_score <- total_score + spectrum[cum_mass]
+    }
+  }
+  return(total_score)
+}
+
+# Suppose AA_map has integer masses for L,V,W,S,T,E
+mods_sample <- c(-61, 0, -9, 0, 0, +69)  # L(-61), V(0), W(-9), S(0), T(0), E(+69)
+score_sample <- score_peptide("LVWSTE", mods_sample, spectrum, AA_map)
+
+mods_dp <- c(+138, 0, -71, 0, 0, -68)    # from your DP output
+score_dp <- score_peptide("LVWSTE", mods_dp, spectrum, AA_map)
+
+print(score_sample)
+print(score_dp)

@@ -1,0 +1,287 @@
+### full function usage:
+
+least_squares_tree <- function(D,
+                               tree = NULL,                # NEW: optional custom tree
+                               method = c("NJ", "UPGMA"),
+                               weights = c("OLS", "FM"),
+                               search = c("none", "NNI"),
+                               max_iter = 100,
+                               tol = 1e-8,
+                               nonnegative = TRUE,
+                               verbose = FALSE) {
+  method  <- match.arg(method)
+  weights <- match.arg(weights)
+  search  <- match.arg(search)
+  
+  # --- Validation ---
+  if (!is.matrix(D)) stop("D must be a matrix")
+  if (nrow(D) != ncol(D)) stop("D must be square")
+  n <- nrow(D)
+  if (any(abs(D - t(D)) > 1e-10)) stop("D must be symmetric")
+  if (any(diag(D) != 0)) stop("Diagonal of D must be zero")
+  if (is.null(rownames(D))) rownames(D) <- paste0("t", seq_len(n))
+  tip_labels <- rownames(D)
+  
+  # --- Initial topology ---
+  if (is.null(tree)) {
+    tree <- switch(method,
+                   NJ    = ape::nj(D),
+                   UPGMA = ape::as.phylo(hclust(as.dist(D), method = "average"))
+    )
+  }
+  tree$tip.label <- tip_labels
+  
+  # --- Helpers ---
+  tip_pairs <- function(labels) {
+    idx <- combn(seq_along(labels), 2)
+    data.frame(i = idx[1,], j = idx[2,], stringsAsFactors = FALSE)
+  }
+  pairs <- tip_pairs(tree$tip.label)
+  dvec  <- D[cbind(pairs$i, pairs$j)]
+  
+  # Weight vector
+  wvec <- switch(weights,
+                 OLS = rep(1.0, length(dvec)),
+                 FM  = {
+                   w <- 1 / (dvec^2)
+                   w[!is.finite(w)] <- 0
+                   w
+                 }
+  )
+  
+  # Build path-incidence design matrix
+  build_design_matrix <- function(tree) {
+    E <- nrow(tree$edge)
+    g <- vector("list", max(tree$edge))
+    for (e in seq_len(E)) {
+      a <- tree$edge[e, 1]; b <- tree$edge[e, 2]
+      g[[a]] <- c(g[[a]], b); g[[b]] <- c(g[[b]], a)
+    }
+    edge_on_path <- function(u, v) {
+      parent <- integer(length(g)); parent[] <- NA_integer_
+      queue <- u; parent[u] <- 0L
+      while (length(queue) > 0 && is.na(parent[v])) {
+        x <- queue[1]; queue <- queue[-1]
+        for (y in g[[x]]) if (is.na(parent[y])) {
+          parent[y] <- x; queue <- c(queue, y)
+        }
+      }
+      path_nodes <- integer(0); cur <- v
+      while (cur != 0L) { path_nodes <- c(path_nodes, cur); cur <- parent[cur] }
+      path_nodes <- rev(path_nodes)
+      on_edge <- integer(E)
+      for (k in seq_len(length(path_nodes) - 1)) {
+        a <- path_nodes[k]; b <- path_nodes[k + 1]
+        idx <- which((tree$edge[,1] == a & tree$edge[,2] == b) |
+                       (tree$edge[,1] == b & tree$edge[,2] == a))
+        on_edge[idx] <- 1L
+      }
+      on_edge
+    }
+    A <- matrix(0, nrow = nrow(pairs), ncol = E)
+    for (r in seq_len(nrow(pairs))) {
+      u <- pairs$i[r]; v <- pairs$j[r]
+      A[r, ] <- edge_on_path(u, v)
+    }
+    colnames(A) <- paste0("e", seq_len(E))
+    A
+  }
+  
+  # Weighted LS solve
+  optimize_branch_lengths <- function(tree, dvec, wvec, nonnegative, tol) {
+    A <- build_design_matrix(tree)
+    Wsqrt <- sqrt(wvec)
+    Aw <- A * Wsqrt
+    dw <- dvec * Wsqrt
+    XtX <- crossprod(Aw)
+    Xty <- crossprod(Aw, dw)
+    ridge <- 0
+    if (qr(XtX)$rank < ncol(XtX)) ridge <- tol
+    b <- tryCatch(solve(XtX + diag(ridge, ncol(XtX)), Xty),
+                  error = function(e) MASS::ginv(XtX) %*% Xty)
+    if (nonnegative) b <- pmax(as.numeric(b), 0)
+    tree$edge.length <- b
+    list(tree = tree, A = A, b = b)
+  }
+  
+  discrepancy <- function(tree, D) {
+    d_tree <- as.matrix(ape::cophenetic.phylo(tree))
+    idx <- upper.tri(D, diag = FALSE)
+    sum((d_tree[idx] - D[idx])^2)
+  }
+  
+  # --- Initialize ---
+  fit <- optimize_branch_lengths(tree, dvec, wvec, nonnegative, tol)
+  tree <- fit$tree
+  best_score <- discrepancy(tree, D)
+  if (verbose) cat(sprintf("Initial discrepancy: %.6f\n", best_score))
+  
+  # --- Topology search ---
+  if (search == "NNI" && max_iter > 0) {
+    iter <- 0; improved <- TRUE
+    while (improved && iter < max_iter) {
+      iter <- iter + 1; improved <- FALSE
+      nbrs <- ape::nni(tree)
+      for (cand in nbrs) {
+        cand$tip.label <- tip_labels
+        fit_c <- optimize_branch_lengths(cand, dvec, wvec, nonnegative, tol)
+        cand <- fit_c$tree
+        score <- discrepancy(cand, D)
+        if (score + tol < best_score) {
+          tree <- cand; best_score <- score; improved <- TRUE
+          if (verbose) cat(sprintf("Iter %d: improved to %.6f\n", iter, best_score))
+        }
+      }
+    }
+  }
+  
+  out <- list(tree = tree,
+              discrepancy = best_score,
+              method = method,
+              weights = weights,
+              search = search)
+  class(out) <- "ls_phylo_fit"
+  out
+}
+
+### inputs: D matrix and df of from to length
+
+### from to length into tree:
+
+convert_into_tree <- function(DF_ftl, D = NULL, tip_labels = NULL, check = TRUE) {
+  # DF_ftl must have columns: from, to, length
+  stopifnot(all(c("from", "to", "length") %in% names(DF_ftl)))
+  
+  # Collect nodes and compute undirected degrees
+  nodes <- sort(unique(c(DF_ftl$from, DF_ftl$to)))
+  # Degree: count both endpoints of each edge
+  deg <- setNames(rep(0L, length(nodes)), nodes)
+  for (k in seq_len(nrow(DF_ftl))) {
+    a <- as.character(DF_ftl$from[k])
+    b <- as.character(DF_ftl$to[k])
+    deg[a] <- deg[a] + 1L
+    deg[b] <- deg[b] + 1L
+  }
+  
+  # Identify tips and internal nodes
+  tips_orig <- names(deg)[deg == 1L]
+  internals_orig <- names(deg)[deg > 1L]
+  nTips <- length(tips_orig)
+  Nnode <- length(internals_orig)
+  
+  if (nTips == 0 || Nnode == 0) stop("Edge list does not define a valid tree (no tips or no internal nodes).")
+  
+  # Tip labels resolution
+  if (!is.null(D)) {
+    if (!is.matrix(D)) stop("D must be a matrix when provided.")
+    if (nrow(D) != ncol(D)) stop("D must be square.")
+    if (is.null(colnames(D))) stop("D must have tip labels in colnames/rownames.")
+    if (length(unique(colnames(D))) != nrow(D)) stop("Duplicate tip labels in D.")
+    if (nTips != nrow(D)) stop("Number of tips inferred from edge list does not match nrow(D).")
+    labeled_tips <- colnames(D)
+  } else if (!is.null(tip_labels)) {
+    if (length(tip_labels) != nTips) stop("tip_labels length must equal number of tips inferred from edge list.")
+    labeled_tips <- tip_labels
+  } else {
+    labeled_tips <- paste0("t", seq_len(nTips))
+  }
+  
+  # Create ape index mapping: tips 1..nTips, internals nTips+1..nTips+Nnode
+  # Use sorted order for stability
+  tips_sorted <- sort(as.numeric(tips_orig))
+  internals_sorted <- sort(as.numeric(internals_orig))
+  
+  map <- list()
+  for (i in seq_along(tips_sorted)) {
+    map[[as.character(tips_sorted[i])]] <- i
+  }
+  for (j in seq_along(internals_sorted)) {
+    map[[as.character(internals_sorted[j])]] <- nTips + j
+  }
+  
+  # Remap edges to ape indices
+  edge_new <- matrix(NA_integer_, nrow = nrow(DF_ftl), ncol = 2)
+  for (k in seq_len(nrow(DF_ftl))) {
+    a <- as.character(DF_ftl$from[k])
+    b <- as.character(DF_ftl$to[k])
+    if (is.null(map[[a]]) || is.null(map[[b]])) stop("Edge references an unknown node.")
+    edge_new[k, 1] <- map[[a]]
+    edge_new[k, 2] <- map[[b]]
+  }
+  
+  # Assemble phylo
+  tree <- list(
+    edge = edge_new,
+    edge.length = as.numeric(DF_ftl$length),
+    tip.label = labeled_tips,
+    Nnode = Nnode
+  )
+  class(tree) <- "phylo"
+  
+  # Optional structural checks
+  if (check) {
+    # Edge count must be nodes - 1 for a tree (unrooted/undirected)
+    n_nodes <- length(nodes)
+    if (nrow(DF_ftl) != n_nodes - 1)
+      warning(sprintf("Edges (%d) != nodes-1 (%d); graph may not be a tree.", nrow(DF_ftl), n_nodes - 1))
+    
+    # Connectivity check via BFS
+    adj <- split(edge_new[,2], edge_new[,1])
+    # Build undirected adjacency
+    undirected <- vector("list", nTips + Nnode)
+    for (k in seq_len(nrow(edge_new))) {
+      a <- edge_new[k,1]; b <- edge_new[k,2]
+      undirected[[a]] <- c(undirected[[a]], b)
+      undirected[[b]] <- c(undirected[[b]], a)
+    }
+    visited <- rep(FALSE, length(undirected))
+    queue <- 1L
+    visited[1] <- TRUE
+    while (length(queue) > 0) {
+      x <- queue[1]; queue <- queue[-1]
+      for (y in undirected[[x]]) if (!visited[y]) {
+        visited[y] <- TRUE; queue <- c(queue, y)
+      }
+    }
+    if (!all(visited)) warning("Graph is disconnected; edge list does not form a single tree.")
+  }
+  
+  # Plot for quick visual confirmation
+  plot(tree)
+  return(tree)
+}
+
+edge_df <- data.frame(
+  from = c(5, 5, 6, 6, 5),
+  to   = c(1, 2, 3, 4, 6),
+  length = c(3, 4, 1, 2, 5)
+)
+
+# With D (labels from D)
+D <- matrix(c(
+  0, 3, 4, 3,
+  3, 0, 4, 5,
+  4, 4, 0, 2,
+  3, 5, 2, 0
+), nrow = 4, byrow = TRUE)
+rownames(D) <- colnames(D) <- c("0","1","2","3")
+
+tree1 <- convert_into_tree(edge_df, D = D)
+
+plot(tree1, main = "Optimized LS tree")
+edgelabels(round(tree1$edge.length, 3), frame = "n", adj = c(0.5, -0.5))
+# Without D (auto labels t1..t4)
+tree2 <- convert_into_tree(edge_df)
+
+plot(tree2, main = "Optimized LS tree")
+edgelabels(round(tree2$edge.length, 3), frame = "n", adj = c(0.5, -0.5))
+
+# Raw discrepancy with original edge lengths
+raw_disc <- sum((cophenetic(tree)[upper.tri(D)] - D[upper.tri(D)])^2)
+
+# Optimized discrepancy from least_squares_tree
+fit <- least_squares_tree(D, tree = tree1, weights = "OLS", search = "none")
+opt_disc <- fit$discrepancy
+
+cat("Raw discrepancy (original lengths):", raw_disc, "\n")
+cat("Optimized discrepancy (LS fit):", opt_disc, "\n")

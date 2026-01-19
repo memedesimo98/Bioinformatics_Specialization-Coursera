@@ -1,0 +1,125 @@
+### Euclidean Farthest traversal
+
+# Euclidean distance function
+euclidean <- function(a, b) sqrt(sum((a - b)^2))
+
+# Farthest-first traversal for k-center
+k_center_greedy <- function(data, k) {
+  n <- nrow(data)
+  centers <- list()
+  
+  # pick first center arbitrarily
+  centers[[1]] <- data[1, ]
+  
+  while (length(centers) < k) {
+    # compute distance of each point to nearest center
+    dists <- sapply(1:n, function(i) {
+      min(sapply(centers, function(c) euclidean(data[i, ], c)))
+    })
+    # pick farthest point
+    farthest_idx <- which.max(dists)
+    centers[[length(centers) + 1]] <- data[farthest_idx, ]
+  }
+  
+  do.call(rbind, centers)
+}
+
+input <- "2 2
+1.3 1.1
+1.3 0.2
+0.6 2.8
+3.0 3.2
+1.2 0.7
+1.4 1.6
+1.2 1.0
+1.2 1.1
+0.6 1.5
+1.8 2.6
+1.2 1.3
+1.2 1.0
+0.0 1.9"
+
+# Read all numbers in order
+nums <- scan(text = input, quiet = TRUE)
+
+# Extract k and m
+k <- nums[1]
+m <- nums[2]
+
+# Remaining numbers are coordinates
+coords <- nums[-(1:2)]
+
+# Build matrix by rows
+data_matrix <- matrix(coords, ncol = m, byrow = TRUE)
+
+cat("k =", k, "\n")
+cat("m =", m, "\n")
+print(data_matrix)
+
+
+
+# Run with k=3
+centers <- k_center_greedy(data_matrix, k)
+# centers is a matrix with k rows and m columns
+# Example: centers <- k_center_greedy(data_matrix, k)
+
+apply(centers, 1, function(row) {
+  cat(paste(row, collapse = " "), "\n")
+})
+
+### distortion
+
+input <- "
+2 2
+2.31 4.55
+5.96 9.08
+--------
+3.42 6.03
+6.23 8.25
+4.76 1.64
+4.47 4.33
+3.95 7.61
+8.93 2.97
+9.74 4.03
+1.73 1.28
+9.72 5.01
+7.27 3.77
+"
+
+# Split into lines
+lines <- strsplit(trimws(input), "\n")[[1]]
+
+# First line: k and m
+first_line <- as.numeric(strsplit(lines[1], " ")[[1]])
+k <- first_line[1]
+m <- first_line[2]
+
+# Find separator line index
+sep_index <- which(lines == "--------")
+
+# Centers are lines between first line and separator
+centers_lines <- lines[2:(sep_index - 1)]
+centers <- do.call(rbind, lapply(centers_lines, function(line) {
+  as.numeric(strsplit(line, " ")[[1]])
+}))
+
+# Data points are lines after separator
+data_lines <- lines[(sep_index + 1):length(lines)]
+data_matrix <- do.call(rbind, lapply(data_lines, function(line) {
+  as.numeric(strsplit(line, " ")[[1]])
+}))
+
+# Print results
+cat("k =", k, "\n")
+cat("m =", m, "\n")
+cat("Centers:\n")
+print(centers)
+cat("Data:\n")
+print(data_matrix)
+
+# Compute distortion
+dists <- sapply(1:nrow(data_matrix), function(i) {
+  min(sapply(1:nrow(centers), function(j) euclidean(data_matrix[i, ], centers[j, ])))
+})
+distortion <- mean(dists^2)
+cat("Distortion =", round(distortion,3), "\n")
