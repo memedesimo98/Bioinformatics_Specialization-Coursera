@@ -1,0 +1,219 @@
+#####
+### Title: Additive Phylogeny (Matrix → Tree Reconstruction)
+
+**Input format:**  
+- `D`: an \(n \times n\) **additive distance matrix** with:  
+  - zero diagonal  
+  - symmetric entries  
+  - leaf labels as row/column names  
+- The matrix represents pairwise evolutionary distances between taxa.
+
+**Objective of the functions:**  
+This module implements the **Additive Phylogeny algorithm**, a foundational method in phylogenetics for reconstructing a **weighted tree** from an additive distance matrix.  
+The algorithm recursively removes leaves, computes limb lengths, inserts internal nodes when needed, and rebuilds the tree from the bottom up.
+
+Two main components are included:
+
+---
+
+### **1. `compute_limb_length_On()`**  
+Computes the **limb length** of leaf \( j \) in \( O(n) \) time using:
+
+
+
+\[
+\text{Limb}(j) = \min_{i,k \neq j} \frac{D[i,j] + D[j,k] - D[i,k]}{2}
+\]
+
+
+
+Returns:  
+- `limb`: the limb length  
+- `sibling`: the leaf \( i \) achieving the minimum  
+- `k_used`: the reference leaf used  
+- `L_by_i`: all computed limb-length candidates  
+
+This is the key step that identifies how far leaf \( j \) attaches to the rest of the tree.
+
+---
+
+### **2. `additive_phylogeny_brick()`**  
+A full implementation of the **Additive Phylogeny** algorithm:
+
+- Maintains a working copy of the distance matrix (“bald matrix”).  
+- Iteratively selects a leaf, computes its limb length, and determines whether it attaches to:  
+  - an existing leaf (sibling), or  
+  - a newly created internal node.  
+- Updates the matrix by removing the processed leaf.  
+- Continues until only two nodes remain, then connects them directly.  
+- Returns a **data frame of edges** with lengths.
+
+This version includes detailed diagnostic output to trace the algorithm’s decisions.
+
+---
+
+### **Output format:**  
+A table of edges in the form:
+
+u -> v : length
+
+
+representing the reconstructed additive phylogeny.
+
+---
+
+### **Coursera module:**  
+**Bioinformatics IV — Phylogeny and Evolutionary Trees**  
+(Additive Phylogeny, Limb Length, Tree Reconstruction)
+
+#####
+
+# from matrix to tree nodes
+
+compute_limb_length_On <- function(j, D, k = NULL) {
+  n <- nrow(D)
+  stopifnot(n == ncol(D))
+  stopifnot(j >= 1 && j <= n)
+  
+  # pick any k != j if not provided
+  if (is.null(k)) {
+    k <- if (j != 1) 1 else 2
+  }
+  if (k == j) {
+    k <- if (j != 1) 1 else 2
+  }
+  
+  i_idx <- setdiff(seq_len(n), j)
+  L <- (D[i_idx, j] + D[j, k] - D[i_idx, k]) / 2
+  
+  limb <- min(L)
+  i_star <- i_idx[which.min(L)]
+  
+  list(limb = limb, sibling = i_star, k_used = k, L_by_i = setNames(L, i_idx))
+}
+
+additive_phylogeny_brick <- function(D) {
+  n <- nrow(D)
+  leaves_name <- colnames(D)
+  remaining_leaves_name <- leaves_name
+  bald_matrix <- D
+  internal_node <- max(as.numeric(colnames(D)))
+  internal_node_name <- as.character(internal_node)
+  internal_node_number <- NA
+  edges_df_new <- data.frame(from = character(), to = character(), length = numeric(), stringsAsFactors = FALSE)
+  while (nrow(bald_matrix) > 2 && length(remaining_leaves_name) > 0) {
+    
+    x <- remaining_leaves_name[[1]]
+    j <- match(x, colnames(bald_matrix))
+    
+    # compute degree of each node in current matrix
+    deg <- rowSums(bald_matrix == min(bald_matrix)) # crude degree proxy
+    
+    cat("\n---\nConsidering node:", x, "at index", j, "\n")
+    cat("Remaining leaves:", remaining_leaves_name, "\n")
+    
+    edges <- compute_limb_length_On(j, bald_matrix)
+    cat("Computed limb length:", edges$limb, "using k =", edges$k_used, "\n")
+    
+    if (edges$limb > 0) {
+      cat("-> Node", x, "is degree 1, processing with limb length\n")
+      remaining_leaves_name <- remaining_leaves_name[-1]
+      
+      new_col <- bald_matrix[, j] - edges$limb
+      new_row <- bald_matrix[j, ] - edges$limb
+      zero_idx <- which(new_col[-j] == 0)
+      
+      if (length(zero_idx) > 0) {
+        actual_idx <- setdiff(seq_along(new_col), j)[zero_idx]
+        sibling_node_name <- colnames(bald_matrix)[actual_idx]
+        cat("Sibling detected:", sibling_node_name, "\n")
+        
+        edges_df <- data.frame(
+          from = x,
+          to   = sibling_node_name,
+          length = edges$limb,
+          stringsAsFactors = FALSE
+        )
+      } else {
+        internal_node <- internal_node + 1
+        internal_node_name <- as.character(internal_node)
+        cat("No sibling found, creating new internal node:", internal_node_name, "\n")
+        
+        new_col[[j]] <- new_row[[j]] <- edges$limb
+        new_row <- c(new_row, 0) 
+        
+        column_names_bald <- colnames(bald_matrix)
+        new_column_names_bald <- c(column_names_bald, internal_node_name)
+        
+        bald_matrix <- cbind(bald_matrix, new_col)
+        bald_matrix <- rbind(bald_matrix, new_row)
+        
+        colnames(bald_matrix) <- rownames(bald_matrix) <- new_column_names_bald
+        edges_df <- data.frame(from = x, to = internal_node_name, length = edges$limb, stringsAsFactors = FALSE)
+        remaining_leaves_name <- c(remaining_leaves_name, internal_node_name)
+      }
+      
+      bald_matrix <- bald_matrix[setdiff(colnames(bald_matrix), x),
+                                 setdiff(colnames(bald_matrix), x)]
+      cat("Removed node", x, "from matrix. New matrix size:", nrow(bald_matrix), "\n")
+      
+      internal_node_number <- match(internal_node_name, colnames(bald_matrix))
+      edges_df_new <- rbind(edges_df_new, edges_df) 
+      
+    } else {
+      cat("-> Node", x, "is NOT degree 1, rotating to end of queue\n")
+      remaining_leaves_name <- c(remaining_leaves_name[-1], x)
+    }
+  }
+  edges_df <- data.frame(from = colnames(bald_matrix)[1], to = colnames(bald_matrix)[2], length = bald_matrix[1,2],
+                         stringsAsFactors = FALSE)
+  edges_df_new <- rbind(edges_df_new,edges_df)
+  
+  final_edge_df <- edges_df_new
+  edges_df_new_names <- colnames(edges_df_new)
+  final_edge_df_from <- final_edge_df[,2]
+  final_edge_df[,2] <- final_edge_df[,1]
+  final_edge_df[,1] <- final_edge_df_from
+  colnames(final_edge_df) <- edges_df_new_names
+  final_edge_df <- rbind(edges_df_new,final_edge_df)
+  return(final_edge_df)
+}
+
+n <- 27
+D <- "0 6741 1741 3137 6077 2176 6347 7812 5403 4571 3832 4873 5581 3879 7875 1842 4020 2311 4780 3922 5814 2643 6681 2897 2866 5086 2789
+6741 0 7022 4716 11358 5105 2350 2153 10684 2534 3169 10154 2300 3340 2216 7123 9301 7592 10061 9203 11095 6008 1986 4270 8147 10367 4486
+1741 7022 0 3418 5842 2457 6628 8093 5168 4852 4113 4638 5862 4160 8156 1607 3785 2076 4545 3687 5579 2924 6962 3178 2631 4851 3070
+3137 4716 3418 0 7754 1501 4322 5787 7080 2546 1807 6550 3556 1854 5850 3519 5697 3988 6457 5599 7491 2404 4656 872 4543 6763 882
+6077 11358 5842 7754 0 6793 10964 12429 1810 9188 8449 2924 10198 8496 12492 5471 3999 5146 1557 3169 881 7260 11298 7514 4327 2899 7406
+2176 5105 2457 1501 6793 0 4711 6176 6119 2935 2196 5589 3945 2243 6239 2558 4736 3027 5496 4638 6530 1443 5045 1261 3582 5802 1153
+6347 2350 6628 4322 10964 4711 0 3421 10290 2140 2775 9760 1906 2946 3484 6729 8907 7198 9667 8809 10701 5614 2290 3876 7753 9973 4092
+7812 2153 8093 5787 12429 6176 3421 0 11755 3605 4240 11225 3371 4411 1325 8194 10372 8663 11132 10274 12166 7079 3057 5341 9218 11438 5557
+5403 10684 5168 7080 1810 6119 10290 11755 0 8514 7775 2250 9524 7822 11818 4797 3325 4472 883 2495 1547 6586 10624 6840 3653 2225 6732
+4571 2534 4852 2546 9188 2935 2140 3605 8514 0 999 7984 1374 1170 3668 4953 7131 5422 7891 7033 8925 3838 2474 2100 5977 8197 2316
+3832 3169 4113 1807 8449 2196 2775 4240 7775 999 0 7245 2009 431 4303 4214 6392 4683 7152 6294 8186 3099 3109 1361 5238 7458 1577
+4873 10154 4638 6550 2924 5589 9760 11225 2250 7984 7245 0 8994 7292 11288 4267 2795 3942 1627 1965 2661 6056 10094 6310 3123 1933 6202
+5581 2300 5862 3556 10198 3945 1906 3371 9524 1374 2009 8994 0 2180 3434 5963 8141 6432 8901 8043 9935 4848 2240 3110 6987 9207 3326
+3879 3340 4160 1854 8496 2243 2946 4411 7822 1170 431 7292 2180 0 4474 4261 6439 4730 7199 6341 8233 3146 3280 1408 5285 7505 1624
+7875 2216 8156 5850 12492 6239 3484 1325 11818 3668 4303 11288 3434 4474 0 8257 10435 8726 11195 10337 12229 7142 3120 5404 9281 11501 5620
+1842 7123 1607 3519 5471 2558 6729 8194 4797 4953 4214 4267 5963 4261 8257 0 3414 1705 4174 3316 5208 3025 7063 3279 2260 4480 3171
+4020 9301 3785 5697 3999 4736 8907 10372 3325 7131 6392 2795 8141 6439 10435 3414 0 3089 2702 1844 3736 5203 9241 5457 2270 3008 5349
+2311 7592 2076 3988 5146 3027 7198 8663 4472 5422 4683 3942 6432 4730 8726 1705 3089 0 3849 2991 4883 3494 7532 3748 1935 4155 3640
+4780 10061 4545 6457 1557 5496 9667 11132 883 7891 7152 1627 8901 7199 11195 4174 2702 3849 0 1872 1294 5963 10001 6217 3030 1602 6109
+3922 9203 3687 5599 3169 4638 8809 10274 2495 7033 6294 1965 8043 6341 10337 3316 1844 2991 1872 0 2906 5105 9143 5359 2172 2178 5251
+5814 11095 5579 7491 881 6530 10701 12166 1547 8925 8186 2661 9935 8233 12229 5208 3736 4883 1294 2906 0 6997 11035 7251 4064 2636 7143
+2643 6008 2924 2404 7260 1443 5614 7079 6586 3838 3099 6056 4848 3146 7142 3025 5203 3494 5963 5105 6997 0 5948 2164 4049 6269 2056
+6681 1986 6962 4656 11298 5045 2290 3057 10624 2474 3109 10094 2240 3280 3120 7063 9241 7532 10001 9143 11035 5948 0 4210 8087 10307 4426
+2897 4270 3178 872 7514 1261 3876 5341 6840 2100 1361 6310 3110 1408 5404 3279 5457 3748 6217 5359 7251 2164 4210 0 4303 6523 642
+2866 8147 2631 4543 4327 3582 7753 9218 3653 5977 5238 3123 6987 5285 9281 2260 2270 1935 3030 2172 4064 4049 8087 4303 0 3336 4195
+5086 10367 4851 6763 2899 5802 9973 11438 2225 8197 7458 1933 9207 7505 11501 4480 3008 4155 1602 2178 2636 6269 10307 6523 3336 0 6415
+2789 4486 3070 882 7406 1153 4092 5557 6732 2316 1577 6202 3326 1624 5620 3171 5349 3640 6109 5251 7143 2056 4426 642 4195 6415 0"
+D <- unlist(strsplit(D," |\t|\n"))
+D <- as.integer(D)
+D <- matrix(D, nrow = n, byrow = TRUE)
+
+leaves_name <- as.character(0:(n-1))
+rownames(D) <- colnames(D) <- leaves_name
+
+result <- additive_phylogeny_brick(D)
+formatted_new <- paste0(result$from, "->", result$to, ":", result$length)
+cat(formatted_new, sep = "\n")
