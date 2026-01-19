@@ -1,0 +1,89 @@
+#####
+### Title: Codon Splitting, Translation, and Stop Codon Segmentation
+
+**Input format:**  
+- `sequence`: RNA or DNA string to be split into codons.  
+- `start`: reading frame offset (1, 2, or 3).  
+- `codon_list`: vector of codons produced by `split_codons()`.  
+- `AA_map`: amino‑acid map containing codon lists for each amino acid.  
+- `named_vec`: named vector of amino acids, where `"NaN"` marks stop codons.
+
+**Objective of the functions:**  
+- `split_codons()` divides a nucleotide sequence into codons according to the chosen reading frame.  
+- `translate_codons()` converts codons into amino acids using the codon table in `AA_map`.  
+- `split_stop_codons()` segments a translated amino‑acid sequence into ORFs by splitting at stop codons, returning codon and amino‑acid groups.
+
+**Output format:**  
+- `split_codons()` returns a vector of codons.  
+- `translate_codons()` returns a named vector mapping codons to amino acids.  
+- `split_stop_codons()` returns a list of ORFs, each containing:  
+  - `codon_sequence`: codons before the stop codon,  
+  - `aa_sequence`: amino acids before the stop codon.
+
+**Coursera module:** Bioinformatics I — Week 1 (Translation and Codon Tables)
+#####
+
+split_codons <- function(sequence,start = 1,n = 3) {
+  # Split the sequence into triplets
+  finish<-start+2
+  codons <- substring(sequence, seq(start, nchar(sequence), by = n), seq(finish, nchar(sequence), by = n))
+  return(codons)
+}
+
+# Example usage
+rna_sequence <- "CCCCGUACGGAGAUGAAA"
+codon_list <- split_codons(rna_sequence)
+
+print(codon_list)
+
+translate_codons <- function(codon_list, AA_map) {
+  sapply(codon_list, function(codon) {
+    # Find the amino acid corresponding to the codon
+    aa <- names(AA_map)[sapply(AA_map, function(x) codon %in% x$Codons)]
+    if (length(aa) == 0) return("?")  # Handle unknown codons
+    return(aa)
+  })
+}
+
+# Example usage
+translated_sequence <- translate_codons(codon_list, AA_map)
+print(names(translated_sequence))
+unnamed_translated_sequence<-unname(translated_sequence)
+print(paste(unnamed_translated_sequence, collapse = ""))
+
+
+split_stop_codons <- function(named_vec, complete_list = TRUE) {
+  # Find indices where NaN occurs
+  nan_indices <- which(named_vec == "NaN")
+  
+  # Handle case when no NaN is found
+  if (length(nan_indices) == 0) {
+    return(list("1" = list(codon_sequence = names(named_vec), aa_sequence = as.character(named_vec))))
+  }
+  
+  # Define break points based on complete_list argument
+  break_points <- if (complete_list) c(0, nan_indices, length(named_vec) + 1) else c(0, nan_indices[1])
+  
+  # Apply function over the break points efficiently
+  result_list <- setNames(
+    lapply(seq_along(break_points[-1]), function(i) {
+      start_idx <- break_points[i] + 1
+      end_idx <- break_points[i + 1] - 1
+      if (start_idx <= end_idx) {
+        group <- named_vec[start_idx:end_idx]
+        list(codon_sequence = names(group), aa_sequence = as.character(group))
+      } else {
+        NULL # Handles edge case where range is invalid
+      }
+    }), as.character(seq_along(break_points[-1])))
+  
+  # Remove NULL entries that might arise due to edge cases
+  result_list <- result_list[!sapply(result_list, is.null)]
+  
+  return(result_list)
+}
+
+
+# Example usage
+result <- split_stop_codons(translated_sequence)
+print(result)
