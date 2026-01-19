@@ -1,0 +1,73 @@
+#####
+### Title: k‑Means++ Initialization for k‑Means Clustering
+
+**Input format:**  
+- `data`: an n×m numeric matrix of points in ℝᵐ  
+- `k`: number of centers to initialize  
+
+**Objective of the function:**  
+This module implements the **k‑Means++ initialization algorithm**, which improves standard k‑means by choosing initial centers in a way that spreads them out.  
+This reduces the chance of poor local minima and typically accelerates convergence.
+
+The algorithm proceeds as follows:
+
+1. **Pick the first center uniformly at random** from the dataset.  
+2. **For each remaining center:**  
+   - Compute the squared distance of each point to its **nearest** chosen center.  
+   - Convert these squared distances into a probability distribution.  
+   - Sample the next center with probability proportional to its squared distance.  
+3. Return the full set of k initialized centers.
+
+This initialization is then passed to a refinement algorithm such as Lloyd’s method (here implemented as `Floyd_centers`).
+
+---
+
+### **Output format:**  
+A k×m matrix where each row is one of the selected initial centers.
+
+---
+
+### **Coursera module:**  
+**Bioinformatics V — Genomic Data Science and Clustering**
+
+#####
+
+
+### K Means ++ Initialization
+
+# k-Means++ initializer
+kmeanspp_init <- function(data, k) {
+  n <- nrow(data)
+  centers <- list()
+  
+  # 1. pick first center uniformly at random
+  first_idx <- sample(1:n, 1)
+  centers[[1]] <- data[first_idx, ]
+  
+  # 2. pick remaining centers
+  while (length(centers) < k) {
+    # compute squared distance of each point to nearest center
+    dists <- sapply(1:n, function(i) {
+      min(sapply(centers, function(c) euclidean(data[i, ], c)))
+    })
+    dists2 <- dists^2
+    
+    # normalize to probabilities
+    probs <- dists2 / sum(dists2)
+    
+    # sample next center with probability proportional to squared distance
+    next_idx <- sample(1:n, 1, prob = probs)
+    centers[[length(centers) + 1]] <- data[next_idx, ]
+  }
+  
+  do.call(rbind, centers)
+}
+
+# Euclidean distance function
+euclidean <- function(a, b) sqrt(sum((a - b)^2))
+
+init <- kmeanspp_init(data, k)
+final <- Floyd_centers(data, k, init)
+apply(final, 1, function(row) {
+  cat(paste(row, collapse = " "), "\n")
+})
