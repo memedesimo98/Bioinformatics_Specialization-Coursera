@@ -1,0 +1,153 @@
+#####
+### Title: Trie Construction and Terminal Annotation for Pattern Sets
+
+**Input format:**  
+- `patterns`: a vector of strings (e.g., `"ATAGA"`, `"ATC"`, `"GAT"`).  
+  Each pattern is inserted into the trie character by character.  
+- Input may be provided as a space‑separated string or read from file.
+
+**Objective of the functions:**  
+- `TrieConstruction()`  
+  Builds a **prefix trie** from a set of patterns:  
+  • Node `"0"` is the root.  
+  • Each node stores:  
+    - `name`: node ID (string),  
+    - `children`: vector of child node IDs,  
+    - `symbol`: vector of edge labels corresponding to each child.  
+  • For each pattern, the function:  
+    - Traverses existing edges when possible,  
+    - Creates new nodes when needed,  
+    - Ensures each edge corresponds to exactly one character.  
+  Returns a full adjacency‑list representation of the trie.
+
+- `AnnotateTrieTerminals()`  
+  Marks terminal nodes corresponding to complete patterns:  
+  • For each pattern, walks the trie from the root,  
+  • Records the path of node IDs,  
+  • Annotates the final node with:  
+    - `ending`: the full pattern,  
+    - `node_path`: the sequence of nodes traversed.  
+  This is useful for downstream tasks such as pattern matching or Aho–Corasick automata.
+
+- `format_trie()`  
+  Prints the trie in the standard Coursera format:  
+from  to  symbol
+
+Codice
+One line per edge.
+
+**Output format:**  
+- `TrieConstruction()` returns a list of nodes, each containing:  
+• `name`, `children`, `symbol`  
+- `AnnotateTrieTerminals()` adds:  
+• `ending`, `node_path` to terminal nodes  
+- `format_trie()` prints adjacency triples such as:  
+`0 1 A`  
+`1 2 T`  
+`2 3 A`  
+…  
+- Output file `trie_output.txt` contains the same adjacency list.
+
+**Coursera module:**  
+Bioinformatics VI — Week 1 (Tries, Prefix Trees, and Pattern Matching)
+#####
+
+### Trie Construction
+
+TrieConstruction <- function(patterns) {
+  
+  # Root node
+  next_id <- 1L
+  trie_final <- list("0" = list(name = "0",children = c(),symbol = c()))
+  
+  for (pattern in patterns) {
+    current_node <- trie_final[["0"]]
+    current_pattern <- unlist(strsplit(pattern,""))
+    while (length(current_pattern)>0) {
+      letter <- current_pattern[[1]]
+      current_pattern <- current_pattern[-1]
+      if (letter %in% current_node$symbol) {
+        pos <- which(current_node$symbol == letter)
+        next_node <- current_node$children[[pos]]
+        current_node <- trie_final[[next_node]]
+      } else {
+        initial_next_id <- next_id
+        current_node_name <- current_node$name
+        while (length(current_pattern)>0) {
+          trie_final[[current_node_name]]$children <- c(trie_final[[current_node_name]]$children,
+                                                        as.character(next_id))
+          trie_final[[current_node_name]]$symbol <- c(trie_final[[current_node_name]]$symbol,letter)
+          letter <- current_pattern[[1]]
+          current_pattern <- current_pattern[-1]
+          current_node_name <- as.character(next_id)
+          trie_final[[current_node_name]] <- list(name = current_node_name,children = c(),symbol = c())
+          next_id <- next_id + 1
+        }
+        trie_final[[current_node_name]]$children <- c(trie_final[[current_node_name]]$children,
+                                                      as.character(next_id))
+        trie_final[[current_node_name]]$symbol <- c(trie_final[[current_node_name]]$symbol,letter)
+        next_id <- next_id + 1
+      }
+    }
+  }
+  return(trie_final)
+}
+
+AnnotateTrieTerminals <- function(trie_final, patterns) {
+  for (pattern in patterns) {
+    current_node <- trie_final[["0"]]
+    current_pattern <- unlist(strsplit(pattern,""))
+    current_node_name <- current_node$name
+    node_path <- c()
+    for (i in 1:(length(current_pattern)-1)) {
+      node_path <- c(node_path,current_node_name)
+      current_letter <- current_pattern[[i]]
+      pos <- which(current_node$symbol == current_letter)
+      next_node <- current_node$children[[pos]]
+      current_node <- trie_final[[next_node]]
+      current_node_name <- current_node$name
+    }
+    node_path <- c(node_path,current_node_name)
+    trie_final[[current_node_name]]$ending <- pattern
+    trie_final[[current_node_name]]$node_path <- node_path
+  }
+  return(trie_final)
+}
+
+
+format_trie <- function(trie_final) {
+  # iterate over all nodes in the trie
+  for (node in trie_final) {
+    # for each child edge, print "from to symbol"
+    for (i in seq_along(node$children)) {
+      cat(node$name, node$children[[i]], node$symbol[[i]], "\n")
+    }
+  }
+}
+
+
+# Example: reading space-separated input and printing exactly as triples
+input <- "ATAGA ATC GAT"
+patterns <- strsplit(input, "\\s+", perl = TRUE)[[1]]
+
+adj <- TrieConstruction(patterns)
+
+# Print adjacency list
+format_trie(adj)
+
+test <- AnnotateTrieTerminals(adj,patterns)
+
+input <- choose.files()
+input <- readLines(input)
+
+# Write adjacency list to a text file outside the function
+con <- file("trie_output.txt", open = "wt")
+
+for (node in adj) {
+  for (i in seq_along(node$children)) {
+    line <- paste(node$name, node$children[[i]], node$symbol[[i]])
+    writeLines(line, con)
+  }
+}
+
+close(con)
