@@ -1,0 +1,72 @@
+#####
+### mass_guessing() and filter_aa_map()
+
+**Input format:**  
+- `spectrum`: a numeric vector representing an experimental mass spectrum (e.g., peptide prefix/suffix masses).  
+- `M`: an integer specifying how many of the most frequent mass differences to consider when filtering.  
+- `AA_map`: a list or mapping where each element contains at least a `Mass` field corresponding to amino‑acid masses.  
+
+**Objective of the functions:**  
+- `mass_guessing()` computes all positive pairwise differences between masses in the spectrum, counts their frequencies, and returns a vector of “ghost masses” sorted by how often they appear.  
+  This is used to infer which amino‑acid masses are most likely present in the peptide.  
+- `filter_aa_map()` selects the most frequent mass differences (up to `M`), filters them to the biologically plausible amino‑acid mass range (57–200 Da), and returns only the amino acids from `AA_map` whose masses match these candidates.
+
+**Output format:**  
+`mass_guessing()` returns:  
+- A named character vector where:  
+  - **values** = mass differences (as characters)  
+  - **names** = their repetition counts  
+  sorted by decreasing frequency.
+
+`filter_aa_map()` returns:  
+- A filtered version of `AA_map` containing only amino acids whose masses match the inferred mass guesses.
+
+**Coursera module:** Bioinformatics III — Week 1 (Spectral Convolution and Amino Acid Mass Inference)
+#####
+
+mass_guessing <- function(spectrum) {
+sorted_spectrum <- rev(sort(spectrum))
+maximum_length <- length(sorted_spectrum)
+
+ghost_masses <- numeric()
+for (mass in 1:maximum_length) {
+  current_mass <- sorted_spectrum[mass]
+  for (iteration in mass:(maximum_length)) {
+    ghost_mass <- as.character(current_mass - sorted_spectrum[iteration])
+    if (ghost_mass > 0) {
+    ghost_masses <- c(ghost_masses,ghost_mass)
+    }
+  }
+}
+table_ghost_masses <- as.data.frame(table(ghost_masses))
+sorted_table <- table_ghost_masses[order(-table_ghost_masses[,2]),]
+sorted_ghost_masses <- character()
+sorted_ghost_repetitions <- character()
+for (i in 1:nrow(sorted_table)) {
+  sorted_ghost_masses <- c(sorted_ghost_masses, rep(as.character(sorted_table[i,1]),sorted_table[i,2]))
+  sorted_ghost_repetitions <- c(sorted_ghost_repetitions, rep(as.character(sorted_table[i,2]),sorted_table[i,2]))
+}
+sorted_ghost <- setNames(sorted_ghost_masses,sorted_ghost_repetitions)
+return(sorted_ghost)
+}
+
+filter_aa_map <- function(mass_guess,M,AA_map) {
+  names_vec <- unique(as.numeric(names(mass_guess)))
+  if (M <= length(names_vec)) {
+    names_vec <- names_vec[M]
+  } else {
+    names_vec <- names_vec[length(names_vec)]
+  }
+  filtered_mass_guess <- unique(mass_guess[as.numeric(names(mass_guess)) >= names_vec])
+  filtered_mass_guess <- filtered_mass_guess[
+    as.numeric(filtered_mass_guess) >= 57 & as.numeric(filtered_mass_guess) <= 200
+  ]
+  AA_map_filtered <- Filter(function(x) x$Mass %in% as.numeric(filtered_mass_guess), AA_map)
+  return(AA_map_filtered)
+}
+
+spectrum <- c(0,57,118,179,236,240,301 )
+M <- 20
+N <- 1000
+result <- mass_guessing(spectrum)
+filtered_mass_list <- filter_aa_map(result,M,mass_list)
