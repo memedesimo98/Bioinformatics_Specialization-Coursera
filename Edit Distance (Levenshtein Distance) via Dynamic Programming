@@ -1,0 +1,46 @@
+#####
+### Title: Edit Distance (Levenshtein Distance) via Dynamic Programming
+
+**Input format:**  
+- `v`: first string to compare.  
+- `w`: second string to compare.  
+
+**Objective of the function:**  
+- Compute the **edit distance** (Levenshtein distance) between two strings using a classical dynamic‑programming matrix.  
+- The edit distance represents the minimum number of operations required to transform `v` into `w`, where allowed operations are:  
+  - insertion  
+  - deletion  
+  - substitution  
+
+**Output format:**  
+- A single integer representing the minimum number of edits needed to convert `v` into `w`.
+
+**Coursera module:** Bioinformatics I — Week 4 (Edit Distance and Alignment Foundations)
+#####
+
+edit_distance <- function(v, w) {
+  v <- unlist(strsplit(v, ""))
+  w <- unlist(strsplit(w, ""))
+  V <- length(v)
+  W <- length(w)
+  
+  # Initialize the DP matrix
+  s <- matrix(0, nrow = V + 1, ncol = W + 1)
+  s[ ,1] <- 0:V     # deletions
+  s[1, ] <- 0:W     # insertions
+  
+  # Fill the matrix
+  for (i in 2:(V + 1)) {
+    for (j in 2:(W + 1)) {
+      cost <- ifelse(v[i - 1] == w[j - 1], 0, 1)  # substitution cost
+      s[i, j] <- min(
+        s[i - 1, j] + 1,         # deletion
+        s[i, j - 1] + 1,         # insertion
+        s[i - 1, j - 1] + cost   # substitution / match
+      )
+    }
+  }
+  
+  return(s[V + 1, W + 1])
+}
+S <- edit_distance(v,w)
