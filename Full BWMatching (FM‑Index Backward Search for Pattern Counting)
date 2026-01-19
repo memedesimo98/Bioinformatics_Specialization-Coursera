@@ -1,0 +1,272 @@
+#####
+### Title: Full BWMatching (FM‑Index Backward Search for Pattern Counting)
+
+**Input format:**  
+- `text`: the reference string to index (a sentinel `$` is appended automatically).  
+- `patterns`: a list of query patterns to count in the text.  
+- Input files follow the Coursera convention:  
+  - a BWT string  
+  - a list of patterns separated by spaces or newlines.
+
+**Objective of the functions:**  
+This module implements the **full FM‑Index backward‑search algorithm** used for fast pattern counting in large genomic strings.  
+It includes:
+
+---
+
+### **1. `bwt_with_sentinel()`**  
+Constructs the **Burrows–Wheeler Transform** of a string by:
+
+- appending `$`  
+- generating all suffixes  
+- sorting them  
+- collecting the last column  
+
+This produces the BWT string used for FM‑indexing.
+
+---
+
+### **2. `build_bwt_index()`**  
+Builds the core FM‑index components:
+
+- **Last column** (the BWT)  
+- **First column** (sorted BWT)  
+- **C array**:  
+  
+
+\[
+  C[c] = \text{first position of character } c \text{ in FirstColumn}
+  \]
+
+
+- **Occ table**: prefix counts  
+  
+
+\[
+  \text{Occ}(c, i) = \#\{c \text{ in LastColumn}[1..i]\}
+  \]
+
+
+
+These structures support constant‑time backward‑search updates.
+
+---
+
+### **3. `BWMatching()`**  
+Implements the **backward‑search recurrence**:
+
+
+
+\[
+\text{top}' = C[s] + \text{Occ}(s, \text{top}-1) + 1
+\]
+
+
+
+
+\[
+\text{bottom}' = C[s] + \text{Occ}(s, \text{bottom})
+\]
+
+
+
+The algorithm:
+
+- processes the pattern from right to left  
+- shrinks the interval \([top, bottom]\)  
+- returns the number of matches:  
+  
+
+\[
+  \text{bottom} - \text{top} + 1
+  \]
+
+
+
+If the interval collapses, the pattern does not occur.
+
+---
+
+### **4. Alternative LF‑mapping implementation**  
+A second version of `BWMatching()` is included, using:
+
+- explicit **Last‑to‑First mapping**  
+- occurrence ranks  
+- direct interval updates  
+
+This matches the version taught in the Coursera assignments.
+
+---
+
+### **Output format:**  
+- A vector of counts, one per pattern, representing how many times each pattern appears in the original text.
+
+Example output:
+
+2 1 1 0 1
+
+
+---
+
+### **Coursera module:**  
+**Bioinformatics IV — Genome Indexing, BWT, FM‑Index, and Pattern Matching**
+
+#####
+
+
+
+### Full BWMatching
+
+# BWT with sentinel appended
+bwt_with_sentinel <- function(text) {
+  text <- paste0(text, "$")
+  n <- nchar(text)
+  suffixes <- sapply(1:n, function(i) substr(text, i, n))
+  sa <- order(suffixes)
+  bwt_chars <- sapply(sa, function(pos) {
+    if (pos == 1) substr(text, n, n) else substr(text, pos - 1, pos - 1)
+  })
+  paste(bwt_chars, collapse = "")
+}
+
+# Build FM-index components: First column, C array, and Occ prefix counts
+build_bwt_index <- function(bwt_str) {
+  last <- strsplit(bwt_str, "")[[1]]
+  n <- length(last)
+  first <- sort(last)
+  
+  # C[c] = first position (1-based) of character c in first column
+  chars <- sort(unique(last))
+  C <- setNames(sapply(chars, function(c) which(first == c)[1]), chars)
+  
+  # Occ[c][i] = # of occurrences of c in last[1:i]
+  Occ <- lapply(chars, function(c) {
+    # cumulative sum over last == c
+    x <- as.integer(last == c)
+    cs <- cumsum(x)
+    # pad with 0 at 0-position for Occ(c, 0)
+    c(0, cs)  # length n+1, Occ(c, i) accessed at index i
+  })
+  names(Occ) <- chars
+  
+  list(last = last, first = first, C = C, Occ = Occ, n = n, chars = chars)
+}
+
+
+BWMatching <- function(index, pattern) {
+  last <- index$last
+  C <- index$C
+  Occ <- index$Occ
+  n <- index$n
+  
+  # Work with character vector of pattern
+  p <- strsplit(pattern, "")[[1]]
+  
+  top <- 1
+  bottom <- n
+  
+  while (top <= bottom) {
+    if (length(p) > 0) {
+      symbol <- tail(p, 1)
+      p <- head(p, -1)
+      
+      if (!(symbol %in% names(C))) {
+        return(0)
+      }
+      
+      # Occ access: Occ[[symbol]][i] where i is 0..n
+      top_prime <- C[[symbol]] + Occ[[symbol]][top - 1 + 1] + 1
+      bottom_prime <- C[[symbol]] + Occ[[symbol]][bottom + 1]
+      
+      if (top_prime > bottom_prime) {
+        return(0)
+      } else {
+        top <- top_prime
+        bottom <- bottom_prime
+      }
+    } else {
+      return(bottom - top + 1)
+    }
+  }
+  0
+}
+
+patterns <- "CCT CAC GAG CAG ATC"
+patterns <- unlist(strsplit(patterns," "))
+text <- "TCCTCTATGAGATCCTATTCTATGAAACCTTCA$GACCAAAATTCTCCGGC"
+bwt_str <- bwt_with_sentinel(text)
+# bwt_str should be "annb$aa"
+idx <- build_bwt_index(bwt_str)
+
+result <- list()
+
+for (i in seq_along(patterns)) {
+  
+  res <- BWMatching(idx, i)   
+  result[[i]] <- res
+}
+
+###test
+
+BWMatching <- function(bwt_str, patterns) {
+  # Split BWT into vector of characters
+  last <- strsplit(bwt_str, "")[[1]]
+  n <- length(last)
+  
+  # First column = sorted BWT
+  first <- sort(last)
+  
+  # Occurrence indices
+  last_occ  <- ave(seq_along(last),  last,  FUN = seq_along)
+  first_occ <- ave(seq_along(first), first, FUN = seq_along)
+  
+  # Last-to-First mapping
+  LF <- match(paste(last, last_occ), paste(first, first_occ))
+  
+  # Function to count matches for one pattern
+  count_pattern <- function(pattern) {
+    pat <- strsplit(pattern, "")[[1]]
+    top <- 1
+    bottom <- n
+    
+    while (top <= bottom) {
+      if (length(pat) > 0) {
+        symbol <- tail(pat, 1)
+        pat <- head(pat, -1)
+        
+        # positions from top..bottom in LastColumn
+        positions <- top:bottom
+        matches <- which(last[positions] == symbol)
+        
+        if (length(matches) == 0) {
+          return(0)
+        } else {
+          topIndex <- positions[min(matches)]
+          bottomIndex <- positions[max(matches)]
+          top <- LF[topIndex]
+          bottom <- LF[bottomIndex]
+        }
+      } else {
+        return(bottom - top + 1)
+      }
+    }
+    return(0)
+  }
+  
+  # Apply to all patterns
+  sapply(patterns, count_pattern)
+}
+
+# Example with your debug dataset
+bwt_input <- "TTGACGCCCGCAGCTCTATCATAAGCCAAGCAATATATAGTCCTTCGATGGAGCCCTACAGCCCCACCGCTGTTGTGTTTTGGCGGAGATTGGGATACATTTACGGTAGAGGTGTCCGCCAAACGCGCCGCTCCTTCTCGGGTGTTGTACGTAACTCGACCATTTAAACCCAGGAGGTTCTTTGATCACGTGGCGTGGTGCAAGTACGGGATTGGGCTCCACCCTAGGCGATGCAACAAAGTTCCTAGTCTCCAAGACATGGGGATGATTTCCAGTATAAGCGGTGGCGTGCCCAGAGCTAGTAG$GGACATCACATCACCTAGGAACGTGTATCGTGTTCGAAGTCTCGGTAACCGTTAAATCGTGAAACTCCAGAGACGTAATATGTCTAAGGGTATCGGGGTTCGTATGCTGTTTAGTCCATTTTATCCCGTACTAGCAAGTAAGTGGGACACTAGACACCCACTTAGTCGTCCTTCTATACTAGTCTTCACTTTTTGACTATAACTTGGGTATCAGTTCATAGCCTGGGTTCCTTATAATGCACCAAAATTTAACCCTTCATCGTTGTTAACCGAGCATCGCCTCGGCATGTATCACCAGTGCCCCCGTACCTTGCTGCCCCACGCTTTAAGGCTGGTCTGAGTAATGGCGAAGAGCGCCCCAACCGTGATCTTCTAGAAAATCAGGCGACGCCGTGCTTAGGGGGACCTAATTTAGGGTCCCCTATCTGGTCAAGTAGGCCGAGGTCTCCGAGTCTATGGAGGGTGGTTAATCATGACAAGCGACCATTAGACTAAGGACTCCATGCACGACCCGTGGTCCTCTGAGCTCATACGCAGCCCTTCGAAACAAAACTAGGGAACGCCATAATCAGTGCAGTCATCGTGTCCTCCAGAGAAAGCCAACGTTTCGTGCAGAAAGAACCCCTTCGGTCGCTCCGGGAGCTTCCTCCATCGTTGATGGCCTTCATCATCAATGACATGTTCCCAACGAACTC"
+input_file <- choose.files()
+patterns <- readLines(input_file)
+patterns <- unlist(strsplit(patterns," "))
+
+input_file <- choose.files()
+text <- readLines(input_file)
+
+res <- BWMatching(bwt_input, patterns)
+# Output: 2 1 1 0 1
+cat(res)
+
