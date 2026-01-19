@@ -1,0 +1,54 @@
+#####
+### Title: Paired de Bruijn Graph Construction from k‑mer Pairs
+
+**Input format:**  
+- `kmers`: a character vector where each element is a **paired k‑mer** in the form `"kmer1|kmer2"`,  
+  e.g. `"ACC|ATA"`.  
+  Both k‑mers in each pair are assumed to have the same length.
+
+**Objective of the function:**  
+- Construct the **paired de Bruijn graph** used in genome assembly with read‑pairs.  
+- For each paired k‑mer, the function extracts:  
+  - the paired prefix: `(prefix(kmer1), prefix(kmer2))`  
+  - the paired suffix: `(suffix(kmer1), suffix(kmer2))`  
+- These paired prefixes and suffixes become nodes in the graph, and each k‑mer contributes a directed edge from prefix → suffix.  
+- The result is an adjacency list representing the paired de Bruijn graph.
+
+**Output format:**  
+- A named list where:  
+  - **names** = paired prefixes (formatted `"prefix1,prefix2"`)  
+  - **values** = vectors of paired suffixes reachable from each prefix  
+- This adjacency list can be used for Eulerian path reconstruction in paired‑read genome assembly.
+
+**Coursera module:** Bioinformatics II — Week 3 (Paired Reads and Paired de Bruijn Graphs)
+#####
+
+deBruijnGraph_paired <- function(kmers) {
+  # Initialize an empty list to store the adjacency list
+  adjacencyList <- list()
+  
+  # Iterate through the kmers to extract paired prefixes and suffixes
+  for (i in 1:length(kmers)) {
+    pair <- strsplit(kmers[i], "\\|")[[1]]  # Split paired kmer by "|"
+    k <- nchar(pair[1])  # Assuming both kmers in the pair have the same length
+    
+    prefix <- paste(substr(pair[1], 1, k - 1), substr(pair[2], 1, k - 1), sep=",")
+    suffix <- paste(substr(pair[1], 2, k), substr(pair[2], 2, k), sep=",")
+    
+    # Update adjacency list treating prefix-suffix pairs as single entities
+    if (!is.null(adjacencyList[[prefix]])) {
+      adjacencyList[[prefix]] <- c(adjacencyList[[prefix]], suffix)
+    } else {
+      adjacencyList[[prefix]] <- c(suffix)
+    }
+  }
+  
+  # Return adjacency list
+  adjacencyList
+}
+
+
+kmers<-c("ACC|ATA","ACT|ATT","ATA|TGA","ATT|TGA","CAC|GAT","CCG|TAC","CGA|ACT",
+          "CTG|AGC","CTG|TTC","GAA|CTT","GAT|CTG","GAT|CTG","TAC|GAT","TCT|AAG","TGA|GCT","TGA|TCT","TTC|GAA")
+# Generate overlap graph
+result <- deBruijnGraph_paired(kmers)
