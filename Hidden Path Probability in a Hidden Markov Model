@@ -1,0 +1,215 @@
+#####
+### Title: Hidden Path Probability in a Hidden Markov Model
+
+**Input format:**  
+The script expects the standard Coursera HMM layout:
+
+1. Hidden path (string of state labels)  
+2. `--------`  
+3. List of states  
+4. `--------`  
+5. Transition matrix  
+   - First column = state labels  
+   - Header row = state labels  
+
+The parsing code extracts:
+
+- `path`: hidden state sequence  
+- `states`: vector of state names  
+- `transition_mat`: transition probability matrix  
+
+---
+
+### **Objective of the function**
+
+This module computes the **probability of a hidden state path** under a Hidden Markov Model:
+
+
+
+\[
+P(\pi) = \frac{1}{|S|} \prod_{i=1}^{n-1} T[\pi_i, \pi_{i+1}]
+\]
+
+
+
+where:
+
+- \( \pi = \pi_1 \pi_2 \dots \pi_n \) is the hidden path  
+- \( T \) is the transition matrix  
+- The initial state is chosen **uniformly** among all states  
+
+This is the quantity used in Bioinformatics VI when evaluating the likelihood of a hidden path independently of emissions.
+
+---
+
+### **How the function works**
+
+1. **Initialization**  
+   Assigns the initial probability:
+
+   
+
+\[
+   P(\pi_1) = \frac{1}{|S|}
+   \]
+
+
+
+2. **Transition multiplication**  
+   For each adjacent pair of states:
+
+p *= transition_mat[from, to]
+
+
+3. **Final probability**  
+Returns the full product as a numeric value.
+
+---
+
+### **Output format**
+
+A single numeric probability, e.g.:
+
+0.000384928691755
+
+
+representing:
+
+
+
+\[
+P(\text{hidden path})
+\]
+
+
+
+---
+
+### **Coursera module:**  
+**Bioinformatics VI — Hidden Markov Models and Mutation Analysis**
+
+#####
+
+
+### hmm hidden path
+
+compute_hidden_path_prob <- function(path, states, transition_mat) {
+  # path: string like "ABABBBAAAA"
+  # states: character vector of state names, e.g., c("A","B")
+  # transition_mat: matrix with row/col names equal to states
+  
+  # Initial probability: uniform over states
+  p <- 1 / length(states)
+  
+  # Iterate over consecutive pairs in path
+  chars <- strsplit(path, "")[[1]]
+  for (i in seq_len(length(chars) - 1)) {
+    from <- chars[i]
+    to   <- chars[i + 1]
+    p <- p * transition_mat[from, to]
+  }
+  p
+}
+
+# Example using the sample input
+states <- c("A", "B")
+transition_mat <- matrix(c(0.377, 0.623,
+                           0.26,  0.74),
+                         nrow = 2, byrow = TRUE,
+                         dimnames = list(states, states))
+path <- "ABABBBAAAA"
+
+prob <- compute_hidden_path_prob(path, states, transition_mat)
+format(prob, digits = 15)
+# [1] "0.000384928691755"
+
+
+# Lazy-friendly HMM input loader
+input_file <- choose.files()
+
+# Read file lines
+lines <- readLines(input_file)
+
+# First line = hidden path
+path <- lines[1]
+
+# Second block = states (split by space)
+states <- unlist(strsplit(lines[3], "\\s+"))
+
+# Remaining lines = transition matrix
+mat_lines <- lines[6:length(lines)]
+transition_mat <- read.table(text = mat_lines, header = TRUE, row.names = 1)
+
+# Check results
+cat("Hidden path:\n", path, "\n\n")
+cat("States:\n", states, "\n\n")
+cat("Transition matrix:\n")
+print(transition_mat)
+
+
+### test
+
+# Pick file
+input_file <- choose.files()
+
+# Read and clean lines
+lines <- readLines(input_file, warn = FALSE)
+lines <- lines[nchar(trimws(lines)) > 0]  # drop empty lines
+
+# Locate separators like "--------"
+is_sep <- grepl("^-{2,}$", trimws(lines))
+sep_idx <- which(is_sep)
+if (length(sep_idx) < 2) stop("Expected two '--------' separators.")
+
+# 1) Hidden path (line before first separator)
+path <- trimws(lines[1])
+
+# 2) States (line after first separator)
+states_line <- trimws(lines[sep_idx[1] + 1])
+states <- unlist(strsplit(states_line, "\\s+"))
+
+# After locating matrix block
+mat_lines <- lines[mat_start:length(lines)]
+
+# Drop the first line (column headers "A B")
+mat_lines <- mat_lines[-1]
+
+# Now parse
+mat_df <- read.table(text = mat_lines,
+                     header = FALSE, stringsAsFactors = FALSE,
+                     sep = "", fill = TRUE, strip.white = TRUE)
+
+rownames_vec <- mat_df[[1]]
+numeric_mat <- as.matrix(mat_df[, -1, drop = FALSE])
+storage.mode(numeric_mat) <- "numeric"
+rownames(numeric_mat) <- rownames_vec
+colnames(numeric_mat) <- states
+
+transition_mat <- numeric_mat
+print(transition_mat)
+
+transition_mat <- numeric_mat
+
+# Probability of hidden path with uniform initial state
+compute_hidden_path_prob <- function(path, states, transition_mat) {
+  chars <- strsplit(path, "")[[1]]
+  if (!all(chars %in% states)) {
+    stop("Path contains states not listed in 'states'.")
+  }
+  p <- 1 / length(states)
+  for (i in seq_len(length(chars) - 1)) {
+    from <- chars[i]
+    to   <- chars[i + 1]
+    p <- p * transition_mat[from, to]
+  }
+  p
+}
+
+# Run and print
+prob <- compute_hidden_path_prob(path, states, transition_mat)
+
+cat("Hidden path:\n", path, "\n\n")
+cat("States:\n", paste(states, collapse = " "), "\n\n")
+cat("Transition matrix:\n")
+print(transition_mat)
+cat("\nProbability of path:\n", format(prob, digits = 15), "\n")
