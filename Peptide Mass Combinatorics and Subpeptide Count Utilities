@@ -1,0 +1,89 @@
+#####
+### Title: Peptide Mass Combinatorics and Subpeptide Count Utilities
+
+**Input format:**  
+- `AA_map`: a list where each element represents an amino acid and contains at least a `Mass` field.  
+- `aminoacidi`: a numeric vector of amino‑acid masses (e.g., extracted from a reduced AA map).  
+- `M`: an integer representing the target total mass for which all possible peptide combinations are counted.  
+- `n`: an integer representing peptide length for subpeptide counting.
+
+**Objective of the functions:**  
+- `ReduceAAmap()` removes redundant amino acids that share the same monoisotopic mass, keeping only the first occurrence of each unique mass.  
+  This is essential for combinatorial peptide‑mass calculations where only distinct masses matter.  
+- `trova_numero_combinazioni()` computes the **number of possible peptides** (order matters) whose total mass equals `M`, using a dynamic‑programming recurrence similar to counting compositions with constrained parts.  
+- `subpeptide_calculator()` computes the total number of **subpeptides** of a peptide of length `n`, using the classical formula for contiguous substrings.
+
+**Output format:**  
+- `ReduceAAmap()` returns a filtered amino‑acid map with unique masses.  
+- `trova_numero_combinazioni()` returns a single integer: the number of distinct mass‑compositions summing to `M`.  
+- `subpeptide_calculator()` returns the total number of subpeptides of a peptide of length `n`.
+
+**Coursera module:** Bioinformatics III — Week 2 (Peptide Sequencing, Spectral Counting, and Combinatorics)
+#####
+
+# from m to n of peptides
+
+ReduceAAmap <- function(AA_map) {
+  filtered_map <- list()  # Store filtered entries
+  seen_masses <- numeric(0)  # Track unique masses
+  
+  for (name in names(AA_map)) {
+    mass <- AA_map[[name]]$Mass
+    
+    # Ensure valid mass before proceeding
+    if (length(mass) == 0) next
+    
+    # Keep only the first occurrence of each unique mass
+    if (!(mass %in% seen_masses)) {
+      seen_masses <- c(seen_masses, mass)  # Add mass to tracked list
+      filtered_map[[name]] <- AA_map[[name]]  # Keep entry
+    }
+  }
+  
+  return(filtered_map)
+}
+
+reducted_AA_map <- ReduceAAmap(AA_map)
+
+trova_numero_combinazioni <- function(aminoacidi, M) {
+  dp <- integer(M + 1)
+  dp[1] <- 1  # dp[0] = 1
+  
+  for (massa in 0:M) {
+    if (dp[massa + 1] > 0) {
+      for (peso in aminoacidi) {
+        nuova_massa <- massa + peso
+        if (nuova_massa <= M) {
+          dp[nuova_massa + 1] <- dp[nuova_massa + 1] + dp[massa + 1]
+        }
+      }
+    }
+  }
+  
+  return(dp[M + 1])
+}
+
+# Esempio di uso:
+
+aminoacidi <- c(A = 2, B = 3, C = 5)
+M <- 1024
+named_mass_vector <- sapply(reducted_AA_map, function(x) x$Mass)
+risultato <- trova_numero_combinazioni(named_mass_vector, M)
+print(format(risultato,scientific = FALSE))
+
+
+
+
+# calculate n* of subpeptides
+
+n <- 34024
+
+subpeptide_calculator <- function(n){
+  subpeptides <- 1
+  for (sub_n in 0:(n-1)) {
+    subpeptides <- subpeptides + n - sub_n
+  }
+  return(subpeptides)
+}
+
+subpeptites <- subpeptide_calculator(n)
