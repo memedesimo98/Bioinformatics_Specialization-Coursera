@@ -1,0 +1,141 @@
+#####
+### Title: Local Alignment with Substitution Matrix and Backtracking (Smith–Waterman Implementation)
+
+**Input format:**  
+- `v`: first sequence as a string (e.g., `"MEANLY"`).  
+- `w`: second sequence as a string (e.g., `"PENALTY"`).  
+- `score_matrix`: a 20×20 amino‑acid substitution matrix (e.g., PAM, BLOSUM), indexed by single‑letter amino‑acid codes.
+
+**Objective of the function:**  
+- `local_alignment()` performs **Smith–Waterman local alignment**, using:  
+  - substitution scores from a provided matrix,  
+  - a fixed indel penalty (–5),  
+  - a “free‑ride” option (0) to allow local restarts.  
+- It fills a dynamic‑programming matrix `s` and a `Backtrack` matrix that records the optimal move at each cell.  
+- It identifies the **maximum‑scoring cell** and reconstructs the optimal local alignment via `Local_Output_Alignment()`.
+
+**Output format:**  
+The function returns a list containing:  
+- `Backtrack`: matrix of directional moves (`dr`, `d`, `r`, `0`).  
+- `matrix`: the full DP scoring matrix.  
+- `End_score`: the highest local alignment score.  
+- `Alignment`: a list with  
+  - `v_align`: aligned substring of `v`,  
+  - `w_align`: aligned substring of `w`.
+
+**Coursera module:** Bioinformatics I — Week 3 (Local Alignment and Smith–Waterman Algorithm)
+#####
+
+
+# local_alignment()
+
+local_alignment <- function(v, w, score_matrix) {
+  v <- unlist(strsplit(v, "")) 
+  w <- unlist(strsplit(w, "")) 
+  V <- length(v) 
+  W <- length(w) 
+  s <- matrix(0, nrow = V+1, ncol = W+1) 
+  Backtrack <- matrix("", nrow = V+1, ncol = W+1) 
+  # Initialize score matrix 
+  s[ ,1] <- 0
+  s[1, ] <- 0
+  # Initialize Backtrack for boundaries 
+  Backtrack[2:(V+1), 1] <- "d" 
+  # First column: deletions from v 
+  Backtrack[1, 2:(W+1)] <- "r" 
+  # First row: insertions from w 
+  for (i in 2:(V+1)) {
+    for (j in 2:(W+1)) {
+      # Compute all three scores
+      diag_score <- s[i - 1, j - 1] + score_matrix[v[i - 1], w[j - 1]]
+      up_score   <- s[i - 1, j] - 5  # fixed indel penalty
+      left_score <- s[i, j - 1] - 5
+      free_ride <- 0
+      
+      max_score <- max(diag_score, up_score, left_score,free_ride)
+      s[i, j] <- max_score
+      
+      # Prefer diagonal > up > left (you can adjust priority here)
+      if (diag_score == max_score) {
+        Backtrack[i, j] <- "dr"
+      } else if (up_score == max_score) {
+        Backtrack[i, j] <- "d"
+      } else if(left_score == max_score){ 
+        Backtrack[i, j] <- "r"
+      } else {
+        Backtrack[i, j] <- "0"
+      }
+      
+    } 
+  }
+  max_val <- max(s)
+  end_pos <- which(s == max_val, arr.ind = TRUE)[1, ]
+  i <- end_pos[1]
+  j <- end_pos[2]
+  alignment <- Local_Output_Alignment(Backtrack,v,w,i,j)
+  return(list(Backtrack = Backtrack, matrix = s,End_score = max_val, Alignment = alignment) )
+}
+
+Local_Output_Alignment <- function(Backtrack, v, w, i, j) {
+  if (Backtrack[i, j] == "0" || Backtrack[i, j] == "" || i == 1 && j == 1) {
+    return(list(v_align = "", w_align = ""))
+  }
+  
+  if (i > 1 && Backtrack[i, j] == "d") {
+    res <- Local_Output_Alignment(Backtrack, v, w, i - 1, j)
+    return(list(v_align = paste(res$v_align,v[i - 1],sep=""),
+                w_align = paste( res$w_align,"-",sep="")))
+  }
+  
+  if (j > 1 && Backtrack[i, j] == "r") {
+    res <- Local_Output_Alignment(Backtrack, v, w, i, j - 1)
+    return(list(v_align = paste( res$v_align,"-",sep=""),
+                w_align = paste( res$w_align,w[j - 1],sep="")))
+  }
+  
+  if (i > 1 && j > 1 && Backtrack[i, j] == "dr") {
+    res <- Local_Output_Alignment(Backtrack, v, w, i - 1, j - 1)
+    return(list(v_align = paste( res$v_align,v[i - 1],sep=""),
+                w_align = paste( res$w_align,w[j - 1],sep="")))
+  }
+  if (Backtrack[i, j] == "0" || s[i, j] == 0) {
+    return(list(v_align = "", w_align = ""))
+  }
+  
+  return(list(v_align = "", w_align = ""))
+}
+
+
+score_matrix <- matrix(c(
+  2,-2,0,0,-3,1,-1,-1,-1,-2,-1,0,1,0,-2,1,1,0,-6,-3,
+  -2,12,-5,-5,-4,-3,-3,-2,-5,-6,-5,-4,-3,-5,-4,0,-2,-2,-8,0,
+  0,-5,4,3,-6,1,1,-2,0,-4,-3,2,-1,2,-1,0,0,-2,-7,-4,
+  0,-5,3,4,-5,0,1,-2,0,-3,-2,1,-1,2,-1,0,0,-2,-7,-4,
+  -3,-4,-6,-5,9,-5,-2,1,-5,2,0,-3,-5,-5,-4,-3,-3,-1,0,7,
+  1,-3,1,0,-5,5,-2,-3,-2,-4,-3,0,0,-1,-3,1,0,-1,-7,-5,
+  -1,-3,1,1,-2,-2,6,-2,0,-2,-2,2,0,3,2,-1,-1,-2,-3,0,
+  -1,-2,-2,-2,1,-3,-2,5,-2,2,2,-2,-2,-2,-2,-1,0,4,-5,-1,
+  -1,-5,0,0,-5,-2,0,-2,5,-3,0,1,-1,1,3,0,0,-2,-3,-4,
+  -2,-6,-4,-3,2,-4,-2,2,-3,6,4,-3,-3,-2,-3,-3,-2,2,-2,-1,
+  -1,-5,-3,-2,0,-3,-2,2,0,4,6,-2,-2,-1,0,-2,-1,2,-4,-2,
+  0,-4,2,1,-3,0,2,-2,1,-3,-2,2,0,1,0,1,0,-2,-4,-2,
+  1,-3,-1,-1,-5,0,0,-2,-1,-3,-2,0,6,0,0,1,0,-1,-6,-5,
+  0,-5,2,2,-5,-1,3,-2,1,-2,-1,1,0,4,1,-1,-1,-2,-5,-4,
+  -2,-4,-1,-1,-4,-3,2,-2,3,-3,0,0,0,1,6,0,-1,-2,2,-4,
+  1,0,0,0,-3,1,-1,-1,0,-3,-2,1,1,-1,0,2,1,-1,-2,-3,
+  1,-2,0,0,-3,0,-1,0,0,-2,-1,0,0,-1,-1,1,3,0,-5,-3,
+  0,-2,-2,-2,-1,-1,-2,4,-2,2,2,-2,-1,-2,-2,-1,0,4,-6,-2,
+  -6,-8,-7,-7,0,-7,-3,-5,-3,-2,-4,-4,-6,-5,2,-2,-5,-6,17,0,
+  -3,0,-4,-4,7,-5,0,-1,-4,-1,-2,-2,-5,-4,-4,-3,-3,-2,0,10
+), nrow = 20, byrow = TRUE,
+dimnames = list(
+  c("A","C","D","E","F","G","H","I","K","L",
+    "M","N","P","Q","R","S","T","V","W","Y"),
+  c("A","C","D","E","F","G","H","I","K","L",
+    "M","N","P","Q","R","S","T","V","W","Y")
+))
+
+
+v <- "MEANLY"
+w <- "PENALTY"
+result <- local_alignment(v,w,score_matrix)
