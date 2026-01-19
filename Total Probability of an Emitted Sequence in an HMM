@@ -1,0 +1,172 @@
+#####
+### Title: Forward Algorithm — Total Probability of an Emitted Sequence in an HMM
+
+**Input format:**  
+This script follows the standard Coursera HMM layout:
+
+- Emitted string  
+- `--------`  
+- Alphabet  
+- `--------`  
+- States  
+- `--------`  
+- Transition matrix  
+- `--------`  
+- Emission matrix  
+
+The function itself expects:
+
+- `x`: emitted sequence (string)  
+- `alphabet`: vector of symbols  
+- `states`: vector of state names  
+- `transition_mat`: state‑to‑state transition probabilities  
+- `emission_mat`: state‑to‑symbol emission probabilities  
+
+---
+
+### **Objective of the function**
+
+This module implements the **Forward algorithm**, computing the **total probability** of observing a sequence under a Hidden Markov Model:
+
+
+
+\[
+P(x) = \sum_{s \in S} \alpha_n(s)
+\]
+
+
+
+where:
+
+
+
+\[
+\alpha_i(s) = P(x_1 x_2 \dots x_i, \text{state}_i = s)
+\]
+
+
+
+This is the core dynamic‑programming method for evaluating HMM likelihoods.
+
+---
+
+### **How the algorithm works**
+
+#### **1. Initialization**
+
+For each state \( s \):
+
+
+
+\[
+\alpha_1(s) = \frac{1}{|S|} \cdot E[s, x_1]
+\]
+
+
+
+Initial state distribution is uniform.
+
+---
+
+#### **2. Recurrence**
+
+For each position \( i \ge 2 \):
+
+
+
+\[
+\alpha_i(s) = \left( \sum_{u \in S} \alpha_{i-1}(u) \cdot T[u,s] \right) \cdot E[s, x_i]
+\]
+
+
+
+This sums over **all possible paths** that end in state \( s \) at position \( i \).
+
+---
+
+#### **3. Termination**
+
+
+
+\[
+P(x) = \sum_{s \in S} \alpha_n(s)
+\]
+
+
+
+This gives the total probability of emitting the entire sequence.
+
+---
+
+### **Output format**
+
+A single numeric value:
+
+1.1005510319694847e-06
+
+
+representing the probability that the HMM emits the sequence.
+
+---
+
+### **Coursera module:**  
+**Bioinformatics VI — Hidden Markov Models and Mutation Analysis**
+
+#####
+
+
+### HMM viterbi forward probability
+
+forward_prob <- function(x, alphabet, states, transition_mat, emission_mat) {
+  x <- strsplit(x, "")[[1]]
+  n <- length(x); k <- length(states)
+  
+  # Checks
+  stopifnot(all(x %in% alphabet))
+  
+  # Equal initial probability
+  init <- rep(1/k, k)
+  
+  # DP table: forward[i, s] = total prob of emitting prefix x1..xi ending in state s
+  forward <- matrix(0, nrow = n, ncol = k)
+  colnames(forward) <- states
+  
+  # Initialization
+  sym1 <- x[1]
+  for (s in states) {
+    forward[1, s] <- init[states == s] * emission_mat[s, sym1]
+  }
+  
+  # Recurrence
+  for (i in 2:n) {
+    sym <- x[i]
+    for (s in states) {
+      forward[i, s] <- sum(forward[i - 1, ] * transition_mat[, s]) * emission_mat[s, sym]
+    }
+  }
+  
+  # Termination: sum over ending states
+  prob <- sum(forward[n, ])
+  prob
+}
+
+x_str <- "TTHHH"
+alphabet <- c("T","H")
+states <- c("F","B")
+
+transition_mat <- matrix(
+  c(0.9, 0.1,
+    0.1, 0.9),
+  nrow = 2, byrow = TRUE,
+  dimnames = list(states, states)
+)
+
+emission_mat <- matrix(
+  c(0.5, 0.5,
+    0.75, 0.25),
+  nrow = 2, byrow = TRUE,
+  dimnames = list(states, alphabet)
+)
+
+forward_prob(x_str, alphabet, states, transition_mat, emission_mat)
+# Expected: 1.1005510319694847e-06
