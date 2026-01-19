@@ -1,0 +1,80 @@
+#####
+### Title: Dynamic Programming for Spectral Vector Peptide Reconstruction
+
+**Input format:**  
+- `spectrum`: an integer vector representing the **spectral vector** (scores at each mass index).  
+- `AA_map_2`: a map of amino acids to their integer masses (e.g., X→4, Z→5).  
+  In real applications, this map contains all 20 amino acids.
+
+**Objective of the function:**  
+This module implements the **Dynamic Programming Spectral Vector** algorithm from *Bioinformatics IV*, used to reconstruct the **highest‑scoring peptide** whose cumulative masses trace a path through the spectral vector.
+
+The algorithm follows the formulation:
+
+- Nodes represent masses \(0, 1, 2, \dots, m\).  
+- Directed edges exist from \(i \to j\) if \(j - i\) equals an amino acid mass.  
+- Each edge into node \(j\) contributes a score equal to `spectrum[j]`.  
+- The goal is to find the **maximum‑weight path** from node 0 to node \(m\).
+
+This is solved using dynamic programming:
+
+- `dp[j]` stores the best score reaching mass \(j\).  
+- `prev[j]` stores the previous mass used.  
+- `aa_used[j]` stores the amino acid chosen for the step.
+
+After filling the DP table, a traceback reconstructs the peptide.
+
+**Output format:**  
+- Prints the peptide sequence that maximizes the spectral score.  
+- Returns the peptide as a string (e.g., `"XZZXZX"`).
+
+**Coursera module:** Bioinformatics IV — Spectral Alignment and Dynamic Programming on Spectral Vectors
+#####
+
+
+# dynamic programming spectral vectoring
+
+# --- Step 1: Parse spectral vector string ---
+spec_str <- "-13 -14 -19 -20 -16 -17 12 19 5 -5 3 0 2 2 -11 19 -11 25 -3 3 2 4 5 7 19 -14 -13 -3 17 -4 19 -11 -16 -10 0 -12 23 15 5 11 7 12 24 2 12 -11 10 21 19 28 7 12 10 19 22 7 -17 -13 9 27 18 9 -6 11 11 -18 -2 25 -17 15 21 -2 -18 -10 -5 -7 1 26 -5 10 -1 15 3 12 -14 1 -20 20 -17 2 14 -9 -16 20 -8 7 -19 23 4 2 14 25 28 0 8 13 28 -1 -16 4 -16 23 1 11 -2 1 22 2 -11 15 -9 1 -4 -3 -14 0 29 -10 -4 -9 -20 13 23 -1 -10 -5 15 18 11 5 10 9 1 6 14 14 -9 0 13 -15 -7 24 -10 -4 -1 -12 26 5 24 -2 -18 -12 30 -7 -4 7 22 17 -6 8 22 27 6 1 6 -10 -3 25 1 29 11 7 0 4 21 12 13 -20 -2 23 1 19 4 13 13 -9 24 30 3 -20 22 16 22 -20 9 -10 13 -3 -8 27 -5 17 4 -7 -20 -5 -9 0 27 15 17 27 17 24 17 28 11 -14 1 2 -17 -15 -20 4 13 -15 1 -18 -18 3 22 -1 15 -15 -19 26 4 28 -14 14 -17 -5 26 20 -4 7 7 8 7 20 4 18 27 3 -19 26 28 -16 -17 -5 29 -20 18 -9 -3 -12 -20 -20 -15 -4 18 12 -7 -1 14 -3 13 -19 -5 11 -11 -17 -16 3 -2 14 -17 9 24 9 20 17 29 -18 -11 -17 -3 -11 18 -2 30 -7 19 3 9 27 29 2 2 -19 23 7 -8 -20 7 29 -20 28 1 10 -7 -19 6 -9 -5 26 -10 -12 11 8 -4 0 -18 19 -2 16 7 -16 -6 0 28 4 11 -9 4 20 9 17 6 -17 8 3 -18 23 -20 25 19 -1 -19 16 0 -1 15 29 -9 -2 3 0 30 -4 -12 -10 5 -14 1 -9 -19 26 27 -15 -11 28 24 28 -11 -6 28 11 25 -9 -15 22 3 4 18 8 22 15 -3 -19 13 16 -20 -15 -8 -18 2 10 -3 13 -1 7 -17 19 28 25 10 -20 21 8 -19 17 19 -4 -2 8 -6 -1 7 15 -17 12 8 4 -8 -12 -16 29 -10 25 9 -7 -17 -12 1 -11 27 25 -8 -13 10 10 -3 -15 -15 -7 -2 21 -14 -12 6 29 -7 -12 -2 16 -5 -4 11 -19 28 26 14 9 -9 5 23 12 29 -5 26 -10 0 8 -17 -5 29 -6 -5 19 -4 27 22 11 11 29 28 15 6 -20 -12 -17 2 10 -16 5 -19 28 -1 12 21 -5 1 26 14 -9 10 -6 17 -11 -14 15 24 -7 28 11 -17 14 19 6 -7 -4 3 -17 -5 12 29 25 24 -16 19 -14 -19 9 -12 30 27 2 -5 27 -14 30 13 6 24 15 10 -14 -10 17 27 15 17 -9 1 29 0 -7 -14 10 25 -20 -17 10 14 -19 30 11 15 27 24 15 -8 29 0 -9 -8 -14 -1 29 30 0 22 16 -4 24 22 -2 -12 14 -11 20 27 7 15 9 -6 -3 -20 14 11 22 1 8 -15 26 1 6 22 21 2 -9 -14 21 13 -19 14 12 22 -13 1 -14 22 1 -9 0 14 -14 9 28 15 20 0 -5 30 22 -17 27 22 18 24 -4 15 18 16 -8 7 27 -11 -3 10 15 7 10 -3 29 30 3 5 -10 -9 -19 -5 -8 14 -2 -2 1 8 10 -9 -12 26 21 9 1 27 19 -10 -16 25 21 2 8 23 -16 -3 -8 -12 -15 -2 5 5 14 7 -16 20 -3 -15 18 28 -17 -10 -8 14 -6 5 27 -13 5 27 28 1 12 2 -1 11 -9 19 13 -2 20 -15 -18 24 -7 29 11 -8 18 -18 -7 9 2 16 -15 17 27 25 -1 -15 4 15 3 25 14 -17 -15 -10 4 -5 6 11 -17 18 29 29 5 22 -6 -16 26 -17 6 27 11 7 -18 0 0 8"
+spectrum <- as.integer(strsplit(spec_str, " ")[[1]])
+m <- length(spectrum)
+
+# --- Step 2: Define amino acid map ---
+AA_map_2 <- list(
+  X = list(Mass = 4),
+  Z = list(Mass = 5)
+  # For real use: add all 20 amino acids with their integer masses
+)
+
+# --- Step 3: Initialize DP arrays ---
+dp <- rep(-Inf, m+1)   # dp[k] = best score at node (k-1)
+prev <- rep(NA, m+1)
+aa_used <- rep(NA, m+1)
+
+dp[1] <- 0  # node 0 (source)
+
+for (j in 1:m) {  # node j
+  for (aa in names(AA_map_2)) {
+    mass <- AA_map_2[[aa]]$Mass
+    i <- j - mass
+    if (i >= 0) {
+      candidate <- dp[i+1] + spectrum[j]  # shift by +1
+      if (candidate > dp[j+1]) {
+        dp[j+1] <- candidate
+        prev[j+1] <- i
+        aa_used[j+1] <- aa
+      }
+    }
+  }
+}
+
+
+# --- Step 5: Traceback from sink ---
+peptide <- character()
+j <- m
+while (!is.na(prev[j+1]) && j > 0) {
+  peptide <- c(aa_used[j+1], peptide)  # prepend amino acid
+  j <- prev[j+1]
+}
+cat("Peptide:", paste(peptide, collapse=""), "\n")
+
