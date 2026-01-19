@@ -1,0 +1,113 @@
+#####
+### Title: FM‑Index Construction and Better BWMatching (Backward Search)
+
+**Input format:**  
+- `text`: a Burrows–Wheeler–transformed string (BWT) used as the FM‑index’s last column.  
+  Typically this is the BWT of the original text with a sentinel `$`.  
+- `patterns`: a space‑delimited list of patterns to be matched against the FM‑index.  
+- Input file format:  
+  Line 1 — BWT string  
+  Line 2 — patterns separated by spaces
+
+**Objective of the functions:**  
+- `build_bwt_index()`  
+  Constructs the core FM‑index tables from a BWT string:  
+  • `last`: the BWT last column as a character vector,  
+  • `first`: implicitly the sorted version of `last`,  
+  • `FirstOccurrence[c]`: the first (0‑based) position of character `c` in the first column,  
+  • `Count[c][i]`: number of occurrences of character `c` in `last[1..i]`,  
+  • `n`: length of the BWT.  
+  These structures support constant‑time LF‑mapping during backward search.
+
+- `BetterBWMatching()`  
+  Implements the **Backward Search algorithm** for FM‑index pattern matching:  
+  • Maintains a search interval `[top, bottom]` in the BWT,  
+  • Iteratively consumes pattern characters from right to left,  
+  • Updates the interval using:  
+    ```
+    top    = FirstOccurrence[symbol] + Count[symbol][top]
+    bottom = FirstOccurrence[symbol] + Count[symbol][bottom+1] - 1
+    ```  
+  • If the interval collapses, the pattern does not occur,  
+  • Otherwise, the number of matches is `bottom − top + 1`.
+
+- The algorithm runs in **O(|pattern|)** time per query, independent of text length.
+
+**Output format:**  
+- For each pattern, `BetterBWMatching()` returns the number of occurrences in the original text.  
+- The final output is a space‑separated list of match counts, e.g.:  
+  `1 2 1`
+
+**Coursera module:**  
+Bioinformatics VI — Week 2–3 (FM‑Index, Backward Search, Better BWMatching)
+#####
+
+
+### Better BWMatching
+
+# Build FM-index components: FirstOccurrence and Count
+build_bwt_index <- function(bwt_str) {
+  last <- strsplit(bwt_str, "")[[1]]
+  n <- length(last)
+  first <- sort(last)
+  
+  # FirstOccurrence[c] = first position (0-based) of character c in first column
+  chars <- sort(unique(last))
+  FirstOccurrence <- setNames(sapply(chars, function(c) {
+    which(first == c)[1] - 1   # convert to 0-based
+  }), chars)
+  
+  # Count[c][i] = # of occurrences of c in last[1:i], with Count(c,0)=0
+  Count <- lapply(chars, function(c) {
+    x <- as.integer(last == c)
+    cs <- cumsum(x)
+    c(0, cs)  # length n+1
+  })
+  names(Count) <- chars
+  
+  list(last = last, FirstOccurrence = FirstOccurrence, Count = Count, n = n)
+}
+
+BetterBWMatching <- function(index, pattern) {
+  last <- index$last
+  FirstOccurrence <- index$FirstOccurrence
+  Count <- index$Count
+  n <- index$n
+  
+  p <- strsplit(pattern, "")[[1]]
+  top <- 0
+  bottom <- n - 1
+  
+  while (top <= bottom) {
+    if (length(p) > 0) {
+      symbol <- tail(p, 1)
+      p <- head(p, -1)
+      
+      if (!(symbol %in% names(FirstOccurrence))) {
+        return(0)
+      }
+      
+      top <- FirstOccurrence[[symbol]] + Count[[symbol]][top + 1]
+      bottom <- FirstOccurrence[[symbol]] + Count[[symbol]][bottom + 1 + 1] - 1
+      
+      if (top > bottom) {
+        return(0)
+      }
+    } else {
+      return(bottom - top + 1)
+    }
+  }
+  0
+}
+
+input_file <- choose.files()
+full_text <- readLines(input_file)
+full_text <- unlist(strsplit(full_text, "\n"))
+patterns <- full_text[[2]]
+patterns <- unlist(strsplit(patterns," "))
+
+text <- full_text[[1]]
+
+idx <- build_bwt_index(text)
+cat(sapply(patterns, function(p) BetterBWMatching(idx, p))," ")
+# Expected output: 1 2 1
