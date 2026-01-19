@@ -1,0 +1,103 @@
+#####
+### Title: Limb Length Computation for Additive Phylogeny
+
+**Input format:**  
+- `j`: index of the leaf whose limb length is being computed (1‑based).  
+- `D`: an \(n \times n\) distance matrix representing pairwise evolutionary distances between taxa.  
+- `n`: number of taxa (only needed in the \(O(n^2)\) version).  
+- Optional `k`: a helper index used in the optimized \(O(n)\) version.
+
+**Objective of the functions:**  
+These functions implement the **Limb Length** calculation used in the **Additive Phylogeny algorithm**, a core component of *Bioinformatics IV*.
+
+- `compute_limb_length()`  
+  Brute‑force \(O(n^2)\) implementation of the limb length formula:  
+  
+
+\[
+  \text{LimbLength}(j) = \min_{i,k \neq j} \frac{D_{ij} + D_{jk} - D_{ik}}{2}
+  \]
+
+
+
+- `compute_limb_length_On()`  
+  Optimized \(O(n)\) version that:  
+  - fixes a single \(k \neq j\),  
+  - computes all candidate limb lengths by varying only \(i\),  
+  - returns:  
+    - `limb`: the limb length,  
+    - `sibling`: the leaf \(i\) achieving the minimum,  
+    - `k_used`: the chosen \(k\),  
+    - `L_by_i`: all computed limb values indexed by \(i\).
+
+**Output format:**  
+- `compute_limb_length()` returns a single numeric limb length.  
+- `compute_limb_length_On()` returns a list containing:  
+  - `limb`: the computed limb length,  
+  - `sibling`: the leaf that minimizes the limb formula,  
+  - `k_used`: the helper leaf used in the computation,  
+  - `L_by_i`: named vector of limb values for each candidate \(i\).
+
+**Coursera module:** Bioinformatics IV — Additive Phylogeny and Tree Reconstruction
+#####
+
+
+#### limb length
+
+compute_limb_length <- function(n, j, D) {
+  limb_lengths <- c()
+  
+  for (i in 0:(n - 1)) {
+    for (k in 0:(n - 1)) {
+      if (i != j && k != j && i != k) {
+        limb <- (D[i + 1, j + 1] + D[j + 1, k + 1] - D[i + 1, k + 1]) / 2
+        limb_lengths <- c(limb_lengths, limb)
+      }
+    }
+  }
+  
+  min_limb <- min(limb_lengths)
+  return(min_limb)
+}
+
+# Sample input
+n <- 4
+j <- 1
+D <- ""
+D <- unlist(strsplit(D," |\t|\n"))
+D <- as.integer(D)
+D <- matrix(D, nrow = n, byrow = TRUE)
+D <- matrix(
+  c(0, 14, 17, 17,
+    14, 0, 7, 13,
+    17, 7, 0, 16,
+    17, 13, 16, 0),
+  nrow = n,
+  byrow = TRUE
+)
+# Compute limb length for leaf j
+limb_length <- compute_limb_length_On(j, D)
+cat("Limb length for leaf", j, "is:", limb_length, "\n")
+# verified
+
+compute_limb_length_On <- function(j, D, k = NULL) {
+  n <- nrow(D)
+  stopifnot(n == ncol(D))
+  stopifnot(j >= 1 && j <= n)
+  
+  # pick any k != j if not provided
+  if (is.null(k)) {
+    k <- if (j != 1) 1 else 2
+  }
+  if (k == j) {
+    k <- if (j != 1) 1 else 2
+  }
+  
+  i_idx <- setdiff(seq_len(n), j)
+  L <- (D[i_idx, j] + D[j, k] - D[i_idx, k]) / 2
+  
+  limb <- min(L)
+  i_star <- i_idx[which.min(L)]
+  
+  list(limb = limb, sibling = i_star, k_used = k, L_by_i = setNames(L, i_idx))
+}
