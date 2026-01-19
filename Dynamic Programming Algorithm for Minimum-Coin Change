@@ -1,0 +1,69 @@
+#####
+### Title: Dynamic Programming Algorithm for Minimum-Coin Change
+
+**Input format:**  
+- `Coins`: a numeric vector of available coin denominations (e.g., `c(2, 3)`).  
+- `MaxValue`: the target value for which the algorithm computes the minimum number of coins.  
+
+**Objective of the function:**  
+- Compute the **minimum number of coins** needed to reach a target value using a **bottom‑up dynamic programming** approach.  
+- Track not only the minimum number of coins but also the **exact combination** of coins that achieves the optimal solution.  
+- Handle unreachable values by returning `-1` when no combination of the given coins can sum to `MaxValue`.
+
+**Output format:**  
+A list containing:  
+- `MinNumCoins`: the minimum number of coins needed to reach `MaxValue`, or `-1` if impossible.  
+- `CoinCombination`: the specific combination of coins achieving the minimum, or `-1` if no valid combination exists.
+
+**Coursera module:** Bioinformatics I — Week 4 (Dynamic Programming Foundations)
+#####
+
+PDcoins <- function(Coins, MaxValue) {
+  CoinCombination <- vector("list", MaxValue)  # Initialize as list
+  ValueArray <- rep(Inf, MaxValue + 1)  # Initialize with large numbers  # Base case: 0 coins needed for value 0
+  for (Coin in Coins) {
+    if (Coin <= MaxValue) {
+      ValueArray[Coin] <- 1
+    }
+  }
+  # Pre-populate worst-case scenario for each value: maximum number of 1's
+  MinCoin <- min(Coins)
+  for (m in 1:MaxValue) {
+    CoinCombination[[m]] <- rep(MinCoin, m)  # Assume worst case is using all 1's
+  }
+  
+  for (Coin in Coins) {
+    if (Coin <= MaxValue) {
+      ValueArray[Coin] <- 1  # Directly assign single-coin cases
+      CoinCombination[[Coin]] <- c(Coin)  # If a value matches a coin exactly, use only that coin
+    }
+  }
+  for (Value in 1:MaxValue) {
+    if (ValueArray[Value] < Inf) {  # Only proceed if the value is reachable
+      for (SumCoin in Coins) {
+        NewValue <- Value + SumCoin
+        if (NewValue <= MaxValue) {
+          oldCombination <- as.numeric(c(unlist(CoinCombination[[Value]])))
+          NewCombination <- c(oldCombination , SumCoin)
+          
+          # Update only if the new combination is shorter than the current
+          if (length(NewCombination) < length(CoinCombination[[NewValue]])) {
+            ValueArray[NewValue] <- ValueArray[Value] + 1
+            CoinCombination[[NewValue]] <- NewCombination  # Keep the shortest valid combination
+          }
+        }
+      }
+    }
+  }
+  ValueArray[MaxValue] <- ifelse(ValueArray[MaxValue] == Inf, -1, ValueArray[MaxValue])
+  if (length(CoinCombination[[MaxValue]]) == MaxValue) {
+    CoinCombination[[MaxValue]] <- -1
+  }
+  return(list(MinNumCoins = ValueArray[MaxValue], CoinCombination = CoinCombination[[MaxValue]]))
+  
+}
+
+Coins <- c(2,3)
+MaxValue <- 24
+time_taken <- system.time(Result <- PDcoins(Coins, MaxValue))
+print(Result)
