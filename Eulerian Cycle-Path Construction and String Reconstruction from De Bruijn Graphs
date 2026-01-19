@@ -1,0 +1,156 @@
+#####
+### Title: Eulerian Cycle-Path Construction and String Reconstruction from De Bruijn Graphs
+
+**Input format:**  
+- `data`: a character vector where each element encodes a node and its outgoing edges in the form `"node: neighbor1 neighbor2 ..."`.  
+- `edge_order`: a numeric vector representing the sequence of nodes in an Eulerian cycle or path (typically produced by `find_eulerian_cycle()` or `find_eulerian_path()`).
+
+**Objective of the functions:**  
+- `find_eulerian_cycle()` builds a directed graph from adjacency‑list input and computes an **Eulerian cycle** using **Hierholzer’s algorithm**, assuming every node has equal in‑ and out‑degree.  
+- `find_eulerian_path()` computes an **Eulerian path** in graphs where exactly two nodes have odd degree, again using a stack‑based Hierholzer traversal.  
+- `reconstruct_string()` rebuilds the **original genome/string** from the Eulerian traversal by overlapping successive nodes, as done in **De Bruijn graph genome assembly**.
+
+**Output format:**  
+- `find_eulerian_cycle()` returns a numeric vector representing the Eulerian cycle in node order.  
+- `find_eulerian_path()` returns a numeric vector representing the Eulerian path.  
+- `reconstruct_string()` returns a character string reconstructed from the Eulerian traversal by merging overlapping k‑mers.
+
+**Coursera module:** Bioinformatics II — Week 2 (De Bruijn Graphs, Eulerian Paths, and Genome Assembly)
+#####
+
+find_eulerian_cycle <- function(data) {
+  # Parse the input data to build the graph
+  graph <- list()
+  for (entry in data) {
+    parts <- strsplit(entry, ": ")[[1]]
+    node <- as.numeric(parts[1])
+    if (length(parts) > 1) {
+      neighbors <- as.numeric(strsplit(parts[2], " ")[[1]])
+    } else {
+      neighbors <- numeric(0)
+    }
+    graph[[as.character(node)]] <- neighbors
+  }
+  
+  # Initialize variables
+  cycle <- character(0)
+  stack <- c(names(graph)[1]) # Start at any node
+  
+  # Traverse the graph using Hierholzer's algorithm
+  while (length(stack) > 0) {
+    current <- stack[length(stack)]
+    if (length(graph[[current]]) > 0) {
+      # Follow an edge
+      next_node <- graph[[current]][1]
+      graph[[current]] <- graph[[current]][-1]
+      stack <- c(stack, next_node)
+    } else {
+      # No more neighbors; add to cycle
+      cycle <- c(cycle, current)
+      stack <- stack[-length(stack)]
+    }
+  }
+  
+  # Reverse the cycle to get the correct order
+  return(as.numeric(rev(cycle)))
+}
+find_eulerian_path <- function(data) {
+  # Parse the input data to build the graph
+  graph <- list()
+  degrees <- list()
+  
+  for (entry in data) {
+    parts <- strsplit(entry, ": ")[[1]]
+    node <- as.numeric(parts[1])
+    if (length(parts) > 1) {
+      neighbors <- as.numeric(strsplit(parts[2], " ")[[1]])
+    } else {
+      neighbors <- numeric(0)
+    }
+    graph[[as.character(node)]] <- neighbors
+    
+    # Track node degrees
+    if (!(as.character(node) %in% names(degrees))) {
+      degrees[[as.character(node)]] <- 0
+    }
+    degrees[[as.character(node)]] <- degrees[[as.character(node)]] + length(neighbors)
+    
+    for (neighbor in neighbors) {
+      if (!(as.character(neighbor) %in% names(degrees))) {
+        degrees[[as.character(neighbor)]] <- 0
+      }
+      degrees[[as.character(neighbor)]] <- degrees[[as.character(neighbor)]] + 1
+    }
+  }
+  
+  # Find a valid starting node (an odd-degree node, or any node if none exist)
+  start_node <- NULL
+  for (node in names(degrees)) {
+    if (degrees[[node]] %% 2 == 1) {
+      start_node <- node
+      break
+    }
+  }
+  if (is.null(start_node)) {
+    start_node <- names(graph)[1] # Default to any node
+  }
+  
+  # Initialize variables
+  path <- character(0)
+  stack <- c(start_node)
+  
+  # Traverse the graph using Hierholzer's algorithm
+  while (length(stack) > 0) {
+    current <- stack[length(stack)]
+    if (length(graph[[current]]) > 0) {
+      next_node <- graph[[current]][1]
+      graph[[current]] <- graph[[current]][-1]
+      stack <- c(stack, next_node)
+    } else {
+      path <- c(path, current)
+      stack <- stack[-length(stack)]
+    }
+  }
+  
+  # Reverse the path to get the correct order
+  return(as.numeric(rev(path)))
+}
+
+# Example input
+data <- c("0: 3", "1: 0", "2: 1 6", "3: 2", "4: 2", "5: 4", "6: 5 8", "7: 9", "8: 7", "9: 6")
+
+# Find Eulerian cycle
+eulerian_cycle <- find_eulerian_cycle(result)
+
+# Save the Eulerian cycle to a .txt file
+output_file <- "eulerian_cycle.txt"
+
+# Write the cycle to the file with nodes separated by spaces
+writeLines(paste(eulerian_cycle, collapse = " "), con = output_file)
+
+cat("The Eulerian cycle has been saved successfully to", output_file, "\n")
+
+# Function to reconstruct the original sequence from edge order
+reconstruct_string <- function(edge_order) {
+  # Start with the first node
+  reconstructed_string <- edge_order[1]
+  
+  # Iterate through the remaining nodes
+  for (i in 2:length(edge_order)) {
+    next_node <- edge_order[i]
+    
+    # Append only the last character of next node
+    reconstructed_string <- paste0(reconstructed_string, substr(next_node, nchar(next_node), nchar(next_node)))
+  }
+  
+  # Remove first and last character since it's a cycle
+  reconstructed_string <- substr(reconstructed_string, 2, nchar(reconstructed_string) - 1)
+  
+  return(reconstructed_string)
+}
+# Example edge order (output from Eulerian cycle function)
+edge_order <- find_eulerian_cycle(result)  # Example cycle
+
+# Reconstruct original string
+reconstructed <- reconstruct_string(edge_order)
+print(reconstructed)
